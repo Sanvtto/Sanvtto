@@ -9,6 +9,7 @@
         matColor: 0,     // cor do passe-partout (ver Art.MATS)
         artSeconds: 10,  // segundos entre obras
         hiddenApps: [],  // apps que o usuário ocultou
+        inputNames: { 1: 'PS4' }, // o que está ligado em cada HDMI (o PS4 da casa está na HDMI 1)
         nightDim: true,
         artClock: true,
         glass: 0,        // transparência: 0 vidro, 1 média, 2 reduzida

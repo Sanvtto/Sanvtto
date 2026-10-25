@@ -74,6 +74,21 @@
     // ---------------------------------------------------------------- apps
 
     var allApps = [];
+    var inputs = []; // entradas HDMI
+
+    function loadInputs() {
+        return global.Apps.inputs().then(function (list) {
+            inputs = list;
+            // uma vez só: o PS4 (HDMI 1) entra nos favoritos, no fim da fileira
+            if (!Prefs.get('ps4Fav') && Prefs.has('favs')) {
+                var favs = Prefs.favorites();
+                if (favs.indexOf('source:HDMI:1') < 0) favs.push('source:HDMI:1');
+                Prefs.setFavorites(favs);
+                Prefs.set('ps4Fav', true);
+            }
+            renderApps();
+        });
+    }
 
     function setApps(list) {
         allApps = list;
@@ -95,10 +110,16 @@
 
     function find(id) {
         for (var i = 0; i < apps.length; i++) if (apps[i].id === id) return apps[i];
+        for (var j = 0; j < inputs.length; j++) if (inputs[j].id === id) return inputs[j];
         return null;
     }
 
-    function tile(app, w, fav) {
+    function hiddenIds() {
+        var h = Prefs.get('hiddenApps');
+        return Array.isArray(h) ? h : [];
+    }
+
+    function tile(app, w, fav, kind) {
         var h = Math.round(w * 9 / 16);
         var t = doc.createElement('div');
         t.className = 'tile' + (fav ? ' fav' : '');
@@ -111,12 +132,16 @@
         tint.className = 'tint';
         tint.style.backgroundColor = app.color;
         card.appendChild(tint);
-        card.setAttribute('data-kind', fav ? 'fav' : 'app');
+        card.setAttribute('data-kind', fav ? 'fav' : (kind || 'app'));
         var initial = doc.createElement('div');
         initial.className = 'initial';
         initial.textContent = app.name.charAt(0).toUpperCase();
         card.appendChild(initial);
-        if (app.icon) {
+        if (app.brand) {
+            // ícone de marca (YouTube, Prime Video, PS4...) desenhado pelo próprio app
+            initial.style.display = 'none';
+            card.appendChild(global.Brands.render(app.brand, doc));
+        } else if (app.icon) {
             var img = doc.createElement('img');
             img.onload = function () { initial.style.display = 'none'; };
             img.onerror = function () { img.remove(); };
@@ -157,6 +182,13 @@
         favRow.appendChild(frag);
         $('favHint').hidden = favs.length > 0;
 
+        var inputRow = $('inputRow');
+        inputRow.innerHTML = '';
+        var hidden = hiddenIds();
+        var shownInputs = inputs.filter(function (x) { return hidden.indexOf(x.id) < 0; });
+        $('inputsTitle').hidden = !shownInputs.length;
+        shownInputs.forEach(function (x) { inputRow.appendChild(tile(x, gridW, false, 'input')); });
+
         var row = null;
         frag = doc.createDocumentFragment();
         apps.forEach(function (a, i) {
@@ -182,8 +214,12 @@
 
     function launch(id) {
         var a = find(id);
-        return global.Apps.launch(id).then(function (ok) {
-            if (!ok) toast('Não foi possível abrir ' + (a ? a.name : 'o app'));
+        var go = a && a.input ? global.Apps.launchInput(a.input) : global.Apps.launch(id);
+        return go.then(function (ok) {
+            if (!ok) {
+                toast(a && a.input ? 'Não consegui trocar para ' + a.name + ' — use o botão de fonte (Source) do controle'
+                    : 'Não foi possível abrir ' + (a ? a.name : 'o app'));
+            }
             return ok;
         });
     }
@@ -233,7 +269,10 @@
         } else {
             items.push(['Adicionar aos favoritos', function () { favs.push(id); saveFavs(favs, 'fav:' + id); }]);
         }
-        items.push(['Ocultar este app', function () {
+        if (a.input) {
+            items.push(['Renomear (' + a.name + ')', function () { openRenameMenu(a); }]);
+        }
+        items.push([a.input ? 'Ocultar esta entrada' : 'Ocultar este app', function () {
             var hidden = Prefs.get('hiddenApps');
             hidden = Array.isArray(hidden) ? hidden : [];
             if (hidden.indexOf(id) < 0) hidden.push(id);
@@ -255,6 +294,32 @@
             box.appendChild(d);
         });
         returnFocus = card;
+        $('menu').hidden = false;
+        mode = 'menu';
+        Nav.setScope($('menu'));
+        Nav.focus(box.firstChild);
+    }
+
+    /** Escolher o nome de uma entrada HDMI numa lista pronta (sem digitar). */
+    function openRenameMenu(a) {
+        var opts = [['HDMI ' + a.input + ' (sem nome)', '']].concat(global.Apps.INPUT_PRESETS.map(function (p) { return [p[0], p[0]]; }));
+        $('menuTitle').textContent = 'O que está ligado na HDMI ' + a.input + '?';
+        var box = $('menuItems');
+        box.innerHTML = '';
+        opts.forEach(function (o) {
+            var d = doc.createElement('div');
+            d.className = 'menu-item focusable';
+            d.textContent = o[0];
+            d.__run = function () {
+                global.Apps.renameInput(a.input, o[1]);
+                loadInputs().then(function () {
+                    var t = doc.querySelector('[data-app="' + cssEscape(a.id) + '"]');
+                    if (t) { Nav.focus(t); scrollTo(t); }
+                });
+                toast('HDMI ' + a.input + ' agora é ' + (o[1] || 'HDMI ' + a.input));
+            };
+            box.appendChild(d);
+        });
         $('menu').hidden = false;
         mode = 'menu';
         Nav.setScope($('menu'));
@@ -308,7 +373,7 @@
         ['h', 'Diagnóstico'],
         ['i', 'Apps', function () { return global.Store.Diag.get('apps'); }],
         ['i', 'Obras', function () { return global.Store.Diag.get('art'); }],
-        ['i', 'Versão', function () { return 'Sanvtto TV 1.3 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
+        ['i', 'Versão', function () { return 'Sanvtto TV 1.4 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
     ];
 
     function openSettings() {
@@ -568,6 +633,7 @@
         if (safeMode) renderSafe();
         Nav.focus($('btnArt').hidden ? Nav.first() : $('btnArt'));
         loadApps();
+        loadInputs();
         loadBackground();
         resetIdle();
         if (!safeMode) global.Store.refreshArt(false).then(function (n) { if (n) loadBackground(); });

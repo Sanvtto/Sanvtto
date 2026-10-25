@@ -57,8 +57,89 @@
     var Diag = global.Store.Diag, errText = global.Store.errText;
 
     function entry(id, name, icon) {
-        return { id: id, name: String(name).trim(), icon: iconUrl(icon), color: colorFor(String(name)) };
+        name = String(name).trim();
+        return { id: id, name: name, icon: iconUrl(icon), color: colorFor(name), brand: global.Brands.forApp(name, !!icon) };
     }
+
+    // ------------------------------------------------------------------ entradas HDMI (PS4, Xbox...)
+
+    // Nomes prontos para escolher no controle, sem precisar digitar. [nome, tipo do desenho]
+    var INPUT_PRESETS = [
+        ['PS4', 'playstation'], ['PS5', 'playstation'], ['Xbox', 'game'], ['Nintendo Switch', 'game'],
+        ['Computador', 'pc'], ['Apple TV', 'appletv'], ['Chromecast', 'tv'], ['Fire TV', 'tv'],
+        ['Decodificador', 'tv'], ['Blu-ray / DVD', 'tv'], ['Soundbar', 'tv']
+    ];
+
+    function inputNames() {
+        var n = global.Store.Prefs.get('inputNames');
+        return n && typeof n === 'object' ? n : {};
+    }
+
+    function inputEntry(num, connected) {
+        var label = inputNames()[num] || '';
+        var kind = 'hdmi';
+        INPUT_PRESETS.forEach(function (p) { if (p[0] === label) kind = p[1]; });
+        return {
+            id: 'source:HDMI:' + num, input: num, connected: connected,
+            name: label || 'HDMI ' + num, icon: '', color: '#2C2C34',
+            brand: global.Brands.forInput(kind)
+        };
+    }
+
+    var sources = {}; // objetos de fonte devolvidos pela TV, por número da HDMI
+
+    /** Lista as entradas HDMI (as conectadas primeiro). Sem a API, mostra HDMI 1 a 3. Nunca rejeita. */
+    function inputs() {
+        return new Promise(function (resolve) {
+            var t = global.tizen, done = false;
+            var on = {};
+            function finish(list) {
+                if (done) return;
+                done = true;
+                var nums = {};
+                list.forEach(function (s) { if (s && s.type === 'HDMI' && s.number >= 1 && s.number <= 4) nums[s.number] = nums[s.number] || !!on[s.number]; });
+                if (!Object.keys(nums).length) { nums = { 1: false, 2: false, 3: false }; }
+                var out = Object.keys(nums).map(function (n) { return inputEntry(+n, !!nums[n]); });
+                out.sort(function (a, b) { return (b.connected - a.connected) || (a.input - b.input); });
+                resolve(out);
+            }
+            setTimeout(function () { finish([]); }, 4000);
+            try {
+                t.systeminfo.getPropertyValue('VIDEOSOURCE', function (v) {
+                    var list = [];
+                    // aparelho em espera (PS4 em repouso) aparece como "desconectado": mostra também
+                    (v && v.connected || []).forEach(function (s) {
+                        if (s && s.type === 'HDMI') { on[s.number] = true; sources[s.number] = s; }
+                        list.push(s);
+                    });
+                    (v && v.disconnected || []).forEach(function (s) {
+                        if (s && s.type === 'HDMI' && !sources[s.number]) sources[s.number] = s;
+                        list.push(s);
+                    });
+                    finish(list);
+                }, function () { finish([]); });
+            } catch (e) {
+                finish([]);
+            }
+        });
+    }
+
+    /** Troca para a entrada HDMI e mostra a imagem dela (o "viewer" da Samsung). Resolve true/false. */
+    function launchInput(num) {
+        return new Promise(function (resolve) {
+            var t = global.tizen;
+            function showViewer(ok) {
+                launch('org.tizen.tv-viewer').then(function (shown) { resolve(ok && shown); });
+            }
+            try {
+                var src = sources[num] || { type: 'HDMI', number: num };
+                t.tvwindow.setSource(src, function () { showViewer(true); }, function () { showViewer(false); });
+            } catch (e) {
+                showViewer(false);
+            }
+        });
+    }
+
 
     function sortByName(list) {
         list.sort(function (x, y) { return x.name.localeCompare(y.name, 'pt-BR', { sensitivity: 'base' }); });
@@ -68,7 +149,9 @@
     function readCache() {
         try {
             var c = JSON.parse(global.localStorage.getItem(CACHE_KEY) || 'null');
-            return Array.isArray(c) ? c.filter(function (a) { return a && a.id && a.name; }) : [];
+            // refaz cada item (ícones de marca podem ter mudado entre versões)
+            return Array.isArray(c) ? c.filter(function (a) { return a && a.id && a.name; })
+                .map(function (a) { return entry(a.id, a.name, a.icon); }) : [];
         } catch (e) { return []; }
     }
 
@@ -228,6 +311,12 @@
     }
 
     var Apps = { load: load, normalize: normalize, defaultFavorites: defaultFavorites, launch: launch, onUpdate: null,
+        inputs: inputs, launchInput: launchInput, INPUT_PRESETS: INPUT_PRESETS,
+        renameInput: function (num, label) {
+            var n = inputNames();
+            if (label) n[num] = label; else delete n[num];
+            global.Store.Prefs.set('inputNames', n);
+        },
         visible: visible, hiddenCount: function () { return hiddenByUser().length; } };
     global.Apps = Apps;
 })(this);

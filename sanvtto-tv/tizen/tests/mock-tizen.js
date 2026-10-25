@@ -47,7 +47,23 @@
             },
             getCurrentApplication: function () { return { appInfo: { id: 'SnvttoTV01.SanvttoTV' }, exit: function () { window.__exited = true; } }; }
         },
-        tvinputdevice: { registerKey: function () {} }
+        tvinputdevice: { registerKey: function () {} },
+        // HDMI 2 com aparelho ligado (o PS4); 1 e 3 vazias
+        systeminfo: {
+            getPropertyValue: function (prop, ok, err) {
+                if (prop !== 'VIDEOSOURCE' || window.__NO_SOURCES) { setTimeout(function () { err && err(new Error('x')); }, 5); return; }
+                setTimeout(function () {
+                    ok({ connected: [{ type: 'HDMI', number: 2 }, { type: 'TV', number: 1 }],
+                         disconnected: [{ type: 'HDMI', number: 1 }, { type: 'HDMI', number: 3 }] });
+                }, 30);
+            }
+        },
+        tvwindow: {
+            setSource: function (src, ok, err) {
+                window.__source = src;
+                setTimeout(function () { window.__SOURCE_FAIL ? err(new Error('x')) : ok(src); }, 5);
+            }
+        }
     };
     window.webapis = { appcommon: {
         AppCommonScreenSaverState: { SCREEN_SAVER_ON: 1, SCREEN_SAVER_OFF: 0 },

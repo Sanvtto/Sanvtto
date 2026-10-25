@@ -297,6 +297,76 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
+    await test('entradas HDMI: mostra, renomeia para PS4 e troca para ela', async () => {
+        const page = await newPage();
+        await page.waitForSelector('#inputRow .card');
+        const ids = await page.$$eval('#inputRow .card', (e) => e.map((x) => x.getAttribute('data-app')));
+        assert.deepStrictEqual(ids, ['source:HDMI:2', 'source:HDMI:1', 'source:HDMI:3'], 'conectada primeiro');
+        assert(!(await page.$eval('#inputsTitle', (e) => e.hidden)));
+        assert(/PS4/.test(await page.$eval('[data-app="source:HDMI:1"]', (e) => e.parentNode.textContent)), 'HDMI 1 já vem como PS4');
+        await page.waitForSelector('#favRow [data-app="source:HDMI:1"]');
+        const favIds = await page.$$eval('#favRow .card', (e) => e.map((x) => x.getAttribute('data-app')));
+        assert.strictEqual(favIds[favIds.length - 1], 'source:HDMI:1', 'PS4 no fim dos favoritos');
+        assert(favIds[0].endsWith('Netflix'), 'os outros favoritos continuam');
+        await key(page, K.OK); // detecta suporte a soltar tecla
+        await page.evaluate(() => { window.__launched = []; window.Nav.focus(document.querySelector('[data-app="source:HDMI:2"]')); });
+        await key(page, K.OK, { hold: true });
+        const items = await page.$$eval('#menuItems .menu-item', (e) => e.map((x) => x.textContent));
+        assert(items.includes('Renomear (HDMI 2)'), items.join(','));
+        await page.evaluate(() => window.Nav.focus([...document.querySelectorAll('.menu-item')].find((x) => x.textContent.startsWith('Renomear'))));
+        await key(page, K.OK);
+        assert(/HDMI 2/.test(await page.textContent('#menuTitle')));
+        await page.evaluate(() => window.Nav.focus([...document.querySelectorAll('.menu-item')].find((x) => x.textContent === 'PS4')));
+        await key(page, K.OK);
+        await page.waitForFunction(() => /PS4/.test(document.querySelector('#inputRow .tile').textContent));
+        assert(await page.$('#inputRow [data-app="source:HDMI:2"] .brand svg'), 'ícone do PlayStation');
+        assert.strictEqual(await page.evaluate(() => window.Nav.current().getAttribute('data-app')), 'source:HDMI:2', 'foco fica no PS4');
+        await page.screenshot({ path: path.join(OUT, 'entradas-ps4.png') });
+        // abre o PS4: troca a fonte e mostra a imagem
+        await key(page, K.OK);
+        await page.waitForTimeout(100);
+        assert.deepStrictEqual(await page.evaluate(() => window.__source), { type: 'HDMI', number: 2 });
+        assert.deepStrictEqual(await page.evaluate(() => window.__launched), ['org.tizen.tv-viewer']);
+        // vira favorito e continua com o nome depois de reabrir
+        await page.evaluate(() => window.SanvttoApp.openMenu(document.querySelector('[data-app="source:HDMI:2"]')));
+        await page.evaluate(() => window.Nav.focus([...document.querySelectorAll('.menu-item')].find((x) => x.textContent === 'Adicionar aos favoritos')));
+        await key(page, K.OK);
+        await page.reload();
+        await page.waitForSelector('#favRow [data-app="source:HDMI:2"]');
+        assert(/PS4/.test(await page.$eval('#favRow [data-app="source:HDMI:2"]', (e) => e.parentNode.textContent)));
+        await noErrors(page);
+    });
+
+    await test('troca de entrada falhou: avisa e mostra a última fonte', async () => {
+        const page = await newPage({ init: () => { window.__SOURCE_FAIL = true; } });
+        await page.waitForSelector('#inputRow .card');
+        await page.evaluate(() => window.Nav.focus(document.querySelector('[data-app="source:HDMI:2"]')));
+        await key(page, K.OK);
+        await page.waitForTimeout(150);
+        assert(/Source/.test(await page.textContent('#toast')), await page.textContent('#toast'));
+        await noErrors(page);
+    });
+
+    await test('sem informação das entradas: mostra HDMI 1 a 3', async () => {
+        const page = await newPage({ init: () => { window.__NO_SOURCES = true; } });
+        await page.waitForSelector('#inputRow .card');
+        assert.deepStrictEqual(await page.$$eval('#inputRow .card', (e) => e.map((x) => x.getAttribute('data-app'))),
+            ['source:HDMI:1', 'source:HDMI:2', 'source:HDMI:3']);
+        await noErrors(page);
+    });
+
+    await test('YouTube e Prime Video com ícone próprio (a TV manda ícone genérico)', async () => {
+        const page = await newPage();
+        const yt = await page.$('#grid [data-app="app1.YouTube"] .brand svg path');
+        assert(yt, 'YouTube sem ícone');
+        assert.strictEqual(await yt.getAttribute('fill'), '#FF0000');
+        assert.strictEqual(await page.$eval('#grid [data-app="app2.PrimeVideo"] .brand-text', (e) => e.textContent), 'prime video');
+        assert.strictEqual(await page.$$eval('#grid [data-app="app2.PrimeVideo"] img', (e) => e.length), 0, 'não usa o ícone genérico da TV');
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: path.join(OUT, 'icones-marcas.png') });
+        await noErrors(page);
+    });
+
     await test('ocultar um app pelo menu e mostrar de novo nos ajustes', async () => {
         const page = await newPage();
         await key(page, K.OK); // detecta suporte a soltar tecla
@@ -331,7 +401,7 @@ async function noErrors(page) {
         await page.waitForSelector('#grid .card');
         const ids = await page.$$eval('#grid .card', (e) => e.map((x) => x.getAttribute('data-app')));
         assert.deepStrictEqual(ids.sort(), ['111299001912', '3201907018807']);
-        assert((await page.$$eval('#favRow .card', (e) => e.length)) === 2, 'viram favoritos');
+        assert((await page.$$eval('#favRow .card:not([data-app^="source:"])', (e) => e.length)) === 2, 'viram favoritos');
         const diag = await page.evaluate(() => window.Store.Diag.get('apps'));
         assert(/lista reserva com 2/.test(diag) && /SecurityError/.test(diag), diag);
         await key(page, K.OK);
