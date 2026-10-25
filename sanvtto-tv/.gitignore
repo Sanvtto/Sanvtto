@@ -1,0 +1,5 @@
+build/
+test/target/
+keystore/
+tizen/tests/node_modules/
+tizen/test-output/

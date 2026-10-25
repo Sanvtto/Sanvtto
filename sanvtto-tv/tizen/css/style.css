@@ -1,0 +1,403 @@
+/* Sanvtto TV para Tizen. Tela fixa de 1920x1080 (a TV escala para 4K).
+   Visual "Liquid Glass" (macOS 26/27): superfícies translúcidas com bordas de luz.
+   O fundo já vem desfocado de fábrica (canvas minúsculo ampliado), então o vidro só precisa de
+   transparência — nada de blur em tempo real na rolagem, que a GPU da TV não aguenta liso.
+   Animações só com transform/opacity. */
+
+:root {
+    --bg: #0b0b0d;
+    --text: #f5f5f7;
+    --sub: rgba(245, 245, 247, .66);
+    --ease: cubic-bezier(.2, 0, 0, 1);
+
+    /* vidro (escuro) */
+    --glass: rgba(255, 255, 255, .10);
+    --glass-hi: rgba(255, 255, 255, .18);
+    --glass-edge: rgba(255, 255, 255, .22);
+    --glass-spec: rgba(255, 255, 255, .45);
+    --sheet: rgba(28, 28, 32, .9);
+    --text-shadow: 0 1px 12px rgba(0, 0, 0, .35);
+
+    /* nível de transparência (padrão: Vidro) */
+    --scrim-top: rgba(0, 0, 0, .30);
+    --scrim-bottom: rgba(0, 0, 0, .72);
+    --tint-op: .42;
+}
+
+body.light {
+    --bg: #ececf0;
+    --text: #1d1d1f;
+    --sub: rgba(29, 29, 31, .66);
+    --glass: rgba(255, 255, 255, .34);
+    --glass-hi: rgba(255, 255, 255, .55);
+    --glass-edge: rgba(255, 255, 255, .7);
+    --glass-spec: rgba(255, 255, 255, .9);
+    --sheet: rgba(250, 250, 252, .92);
+    --text-shadow: 0 1px 10px rgba(255, 255, 255, .5);
+    --scrim-top: rgba(242, 242, 245, .25);
+    --scrim-bottom: rgba(242, 242, 245, .65);
+}
+
+/* "Média": um pouco mais opaco */
+body.glass-med { --scrim-top: rgba(0, 0, 0, .5); --scrim-bottom: rgba(0, 0, 0, .85); --tint-op: .65; --sheet: rgba(28, 28, 32, .8); }
+body.light.glass-med { --scrim-top: rgba(242, 242, 245, .5); --scrim-bottom: rgba(242, 242, 245, .82); --sheet: rgba(250, 250, 252, .85); }
+
+/* "Reduzida": como o "Reduzir transparência" da Apple — máximo de leitura */
+body.glass-low {
+    --scrim-top: rgba(11, 11, 13, .9); --scrim-bottom: rgba(11, 11, 13, .97); --tint-op: .95;
+    --glass: rgba(255, 255, 255, .16); --sheet: rgba(36, 36, 40, .98); --text-shadow: none;
+}
+body.light.glass-low {
+    --scrim-top: rgba(236, 236, 240, .92); --scrim-bottom: rgba(236, 236, 240, .97);
+    --glass: rgba(255, 255, 255, .8); --sheet: rgba(250, 250, 252, .98);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    cursor: none;
+    user-select: none;
+}
+
+[hidden] { display: none !important; }
+
+#bg, #scrim { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+#bgCanvas { width: 100%; height: 100%; opacity: 0; transition: opacity .9s ease; }
+#bgCanvas.shown { opacity: 1; }
+#scrim { background: linear-gradient(var(--scrim-top), var(--scrim-bottom)); transition: background .6s; }
+
+#home { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; }
+body.in-settings #home { visibility: hidden; }
+#content {
+    padding: 60px 96px 120px;
+    transition: transform .45s var(--ease);
+}
+
+header { display: flex; align-items: center; justify-content: space-between; }
+#clock { font-size: 92px; font-weight: 200; letter-spacing: -1px; line-height: 1; text-shadow: var(--text-shadow); }
+#date { font-size: 30px; color: var(--sub); margin-top: 12px; text-shadow: var(--text-shadow); }
+.pills { display: flex; }
+
+/* ---------------------------------------------------------------- vidro */
+
+.glass {
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass) 55%);
+    box-shadow: inset 0 1.5px 0 var(--glass-spec), inset 0 0 0 1.5px var(--glass-edge);
+}
+
+.pill {
+    font-size: 30px;
+    font-weight: 500;
+    padding: 20px 40px;
+    margin-left: 24px;
+    border-radius: 44px;
+    text-shadow: var(--text-shadow);
+    transition: transform .22s var(--ease), background-color .15s, color .15s;
+}
+.pill.focused {
+    background: rgba(255, 255, 255, .96);
+    color: #1d1d1f;
+    text-shadow: none;
+    transform: scale(1.08);
+    box-shadow: inset 0 1.5px 0 #fff, 0 16px 36px rgba(0, 0, 0, .3);
+}
+
+h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px; text-shadow: var(--text-shadow); }
+#favHint { font-size: 28px; color: var(--sub); margin: 16px 8px; }
+
+.row-viewport { margin: 0 -96px; padding: 16px 96px 0; overflow: hidden; }
+.row { display: flex; transition: transform .3s var(--ease); }
+
+#grid .grid-row { display: flex; padding: 16px 8px 0; }
+
+.tile { flex: none; margin-right: 44px; }
+.tile:last-child { margin-right: 0; }
+.card {
+    position: relative;
+    border-radius: 28px;
+    overflow: hidden;
+    background: var(--glass);
+    transition: transform .2s var(--ease);
+}
+/* cor do app, translúcida: o fundo aparece através dela */
+.card .tint {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    opacity: var(--tint-op);
+}
+/* sombra pré-desenhada; só a opacidade anima (barato na TV) */
+.card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; right: 0; bottom: 0;
+    border-radius: 28px;
+    box-shadow: 0 28px 50px rgba(0, 0, 0, .45);
+    opacity: 0;
+    transition: opacity .22s;
+    z-index: -1;
+}
+.card img {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 46%;
+    transform: translate(-50%, -50%);
+}
+.card .initial {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 64px; font-weight: 600; color: rgba(255, 255, 255, .92);
+    text-shadow: 0 2px 16px rgba(0, 0, 0, .3);
+}
+/* bordas de luz do vidro, sempre visíveis */
+.edge {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    border-radius: 28px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 45%);
+    box-shadow: inset 0 1.5px 0 var(--glass-spec), inset 0 0 0 1.5px var(--glass-edge);
+}
+/* reflexo especular que aparece no foco */
+.sheen {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    background: linear-gradient(125deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .08) 38%, rgba(255, 255, 255, 0) 60%);
+    box-shadow: inset 0 0 0 2.5px rgba(255, 255, 255, .55);
+    border-radius: 28px;
+    opacity: 0;
+    transition: opacity .22s;
+}
+.label {
+    font-size: 26px;
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 26px 4px 8px;
+    opacity: 0;
+    text-shadow: var(--text-shadow);
+    transform: translateY(0);
+    transition: opacity .2s, transform .2s var(--ease);
+}
+.tile.fav .label { font-size: 30px; padding-top: 32px; }
+
+.tile.focused { position: relative; z-index: 2; }
+.tile.focused .card { transform: scale(1.12); }
+.tile.fav.focused .card { transform: scale(1.1); }
+.tile.focused .card::before, .tile.focused .sheen { opacity: 1; }
+.tile.focused .label { opacity: 1; transform: translateY(8px); }
+
+/* modo seguro */
+#safe h1 { font-size: 44px; font-weight: 500; margin-top: 56px; }
+#safe p { font-size: 28px; color: var(--sub); margin: 12px 0 28px; }
+#safe .pill { display: inline-block; margin: 12px 16px 0 0; }
+#safeList { margin-top: 20px; }
+
+/* ---------------------------------------------------------------- menu de app (vidro de verdade: é pequeno e parado) */
+
+.overlay {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: rgba(0, 0, 0, .28);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+}
+.sheet {
+    width: 760px;
+    background: var(--sheet);
+    border-radius: 40px;
+    padding: 40px 32px;
+    color: var(--text);
+    box-shadow: inset 0 1.5px 0 var(--glass-spec), inset 0 0 0 1.5px var(--glass-edge), 0 40px 80px rgba(0, 0, 0, .35);
+}
+#menuTitle { font-size: 34px; font-weight: 600; padding: 0 24px 24px; }
+.menu-item {
+    font-size: 30px;
+    padding: 22px 24px;
+    border-radius: 20px;
+    transition: transform .18s var(--ease), background-color .12s, color .12s;
+}
+.menu-item.focused { background: rgba(255, 255, 255, .96); color: #1d1d1f; transform: scale(1.03); }
+
+/* ---------------------------------------------------------------- ajustes: painel de vidro sobre a obra desfocada */
+
+.overlay.full { background: transparent; justify-content: flex-start; align-items: stretch; padding: 80px 128px; }
+.settings-left { width: 38%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.settings-title { font-size: 68px; font-weight: 300; text-shadow: var(--text-shadow); }
+.settings-sub { font-size: 26px; color: var(--sub); margin-top: 14px; text-shadow: var(--text-shadow); }
+.settings-right {
+    width: 62%;
+    overflow: hidden;
+    position: relative;
+    border-radius: 44px;
+}
+/* o conteúdo some suavemente na borda de baixo em vez de ser cortado */
+.settings-viewport {
+    height: 100%;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 140px), transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 140px), transparent 100%);
+}
+#settingsList { transition: transform .35s var(--ease); padding: 24px 24px 80px; }
+.set-header { font-size: 22px; font-weight: 600; letter-spacing: 2px; color: var(--sub); padding: 40px 32px 14px; }
+.set-header:first-child { padding-top: 16px; }
+.set-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 30px;
+    padding: 24px 32px;
+    margin-top: 4px;
+    border-radius: 22px;
+    transition: transform .18s var(--ease), background-color .12s, color .12s;
+}
+.set-row .value { color: var(--sub); font-size: 28px; margin-left: 32px; text-align: right; }
+.set-row.focused { background: rgba(255, 255, 255, .96); color: #1d1d1f; transform: scale(1.03); box-shadow: 0 14px 30px rgba(0, 0, 0, .25); }
+.set-row.focused .value { color: rgba(29, 29, 31, .6); }
+
+/* ---------------------------------------------------------------- modo quadro */
+
+#art { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; z-index: 20; }
+.art-layer {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    opacity: 0;
+    transition: opacity 2.2s var(--ease);
+}
+.art-layer.on { opacity: 1; }
+/* legenda em vidro (sem blur ao vivo: a obra troca com fade e o blur travaria) */
+#artInfo {
+    position: absolute; left: 64px; bottom: 64px;
+    padding: 22px 32px;
+    border-radius: 30px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .08));
+    background-color: rgba(20, 20, 24, .35);
+    box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .45), inset 0 0 0 1.5px rgba(255, 255, 255, .2);
+    opacity: 0; transition: opacity .8s; max-width: 1100px;
+}
+#artInfo.on { opacity: 1; }
+#artTitle { font-size: 34px; font-weight: 600; }
+#artSub { font-size: 26px; opacity: .8; margin-top: 8px; }
+#artInfo, #artClock { color: #fff; text-shadow: 0 1px 10px rgba(0, 0, 0, .4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#art.on-mat #artInfo { background-color: rgba(255, 255, 255, .35); color: #1d1d1f; text-shadow: none; }
+#art.on-mat #artClock { color: #1d1d1f; text-shadow: none; }
+#artClock { position: absolute; right: 80px; bottom: 80px; font-size: 32px; font-weight: 300; opacity: .75; }
+#artDim { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: #000; opacity: 0; transition: opacity 3s; pointer-events: none; }
+
+#toast {
+    position: absolute; left: 50%; bottom: 80px;
+    transform: translateX(-50%);
+    background: var(--sheet); color: var(--text);
+    box-shadow: inset 0 1.5px 0 var(--glass-spec), inset 0 0 0 1.5px var(--glass-edge), 0 20px 40px rgba(0, 0, 0, .3);
+    font-size: 28px; padding: 22px 40px; border-radius: 40px;
+    z-index: 50;
+}
+
+/* ---------------------------------------------------------------- galeria do quadro (como o menu do Modo Arte) */
+
+#gallery {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 36px 96px 30px;
+    border-radius: 48px 48px 0 0;
+    background: linear-gradient(180deg, rgba(40, 40, 46, .55), rgba(20, 20, 24, .78));
+    box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .4), inset 0 0 0 1.5px rgba(255, 255, 255, .14), 0 -30px 60px rgba(0, 0, 0, .25);
+    color: #f5f5f7;
+    animation: galUp .35s var(--ease);
+}
+@keyframes galUp { from { transform: translateY(60px); opacity: 0; } to { transform: none; opacity: 1; } }
+.gal-head { font-size: 22px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: rgba(245, 245, 247, .65); margin: 0 6px 14px; }
+.gal-head #galCount { letter-spacing: 0; text-transform: none; font-weight: 400; margin-left: 18px; }
+.gal-viewport { margin: 0 -96px; padding: 12px 96px 18px; overflow: hidden; }
+.gal-row { display: flex; transition: transform .4s var(--ease); }
+.gal-row.wrap { flex-wrap: wrap; }
+.gal-cols { display: flex; margin-top: 14px; }
+.gal-cols > div { margin-right: 80px; }
+
+.gal-thumb {
+    flex: none;
+    position: relative;
+    width: 288px; height: 176px;
+    margin-right: 28px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #f3f0ea;
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .25);
+    transition: transform .22s var(--ease), box-shadow .22s;
+}
+.gal-thumb img { position: absolute; left: 8%; top: 9%; width: 84%; height: 82%; object-fit: contain; }
+.gal-thumb.broken { background: #3a3a3c; }
+.gal-thumb.selected::after {
+    content: "Em exibição";
+    position: absolute; left: 10px; top: 10px;
+    font-size: 18px; font-weight: 600;
+    padding: 4px 12px; border-radius: 12px;
+    background: rgba(20, 20, 24, .75); color: #fff;
+}
+.gal-thumb.focused { transform: scale(1.1); box-shadow: inset 0 0 0 3px #fff, 0 22px 44px rgba(0, 0, 0, .45); z-index: 2; }
+
+.gal-chip {
+    font-size: 26px; font-weight: 500;
+    padding: 14px 28px; margin: 0 14px 12px 0;
+    border-radius: 30px;
+    background: rgba(255, 255, 255, .12);
+    box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .35), inset 0 0 0 1.5px rgba(255, 255, 255, .16);
+    transition: transform .18s var(--ease), background-color .12s, color .12s;
+}
+.gal-chip.selected { background: rgba(255, 255, 255, .3); }
+.gal-chip.focused { background: rgba(255, 255, 255, .96); color: #1d1d1f; transform: scale(1.06); }
+
+.gal-swatch {
+    width: 64px; height: 64px; margin: 0 18px 12px 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .3), 0 4px 10px rgba(0, 0, 0, .3);
+    transition: transform .18s var(--ease), box-shadow .18s;
+}
+.gal-swatch.selected { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .15), 0 0 0 4px rgba(255, 255, 255, .55); }
+.gal-swatch.focused { transform: scale(1.18); box-shadow: 0 0 0 5px #fff, 0 10px 24px rgba(0, 0, 0, .4); }
+.gal-hint { font-size: 22px; color: rgba(245, 245, 247, .55); margin: 10px 6px 0; }
+
+/* textos longos (caminhos de menu, diagnóstico) quebram linha em vez de vazar */
+.set-row .value.info { font-size: 22px; white-space: normal; max-width: 62%; line-height: 1.35; }
+
+/* legenda e relógio no passe-partout, abaixo da obra (posição calculada em art.js) */
+#art.in-mat #artInfo {
+    transform: translateY(-50%);
+    padding: 0; border-radius: 0;
+    background: none; box-shadow: none;
+    text-shadow: none;
+}
+#art.in-mat #artTitle, #art.in-mat #artSub { display: inline; font-size: 24px; }
+#art.in-mat #artTitle { font-weight: 600; }
+#art.in-mat #artSub { margin: 0; opacity: .75; }
+#art.in-mat #artSub:not(:empty)::before { content: " — "; }
+#art.in-mat #artClock { transform: translateY(-50%); font-size: 24px; font-weight: 400; text-shadow: none; }
+#art:not(.on-mat).in-mat #artInfo, #art:not(.on-mat).in-mat #artClock { color: rgba(255, 255, 255, .85); }
+#art.on-mat.in-mat #artInfo { background: none; }
+
+/* ícones de marca desenhados pelo app (YouTube, Prime Video, PS4...) */
+.card .brand {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+}
+.card .brand-svg { height: 42%; width: auto; }
+.card .brand-text {
+    font-size: 38px; font-weight: 700; letter-spacing: -.5px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    position: relative; padding-bottom: 12px;
+}
+/* o "sorriso" embaixo do texto, como no logo do Prime Video */
+.card .brand-text::after {
+    content: ""; position: absolute; left: 6%; right: 18%; bottom: 0; height: 10px;
+    border-bottom: 4px solid currentColor; border-radius: 0 0 60% 60%;
+}
+.tile.fav .card .brand-text { font-size: 48px; }
+#inputRow { padding: 16px 8px 0; display: flex; }
+
+:root { --tile-op: .92; }
+
+/* todos os cards no mesmo padrão: a cor do app quase sólida, com o vidro por cima */
+.card .tint { opacity: var(--tile-op); }
+body.glass-low .card .tint { opacity: 1; }
+
+/* a legenda entra e sai junto com a obra (o fade da obra é de 2,2 s) */
+#artInfo { transition: opacity 1.4s ease; }

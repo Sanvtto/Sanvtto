@@ -1,0 +1,6 @@
+{
+  "name": "sanvtto-tv-tizen-tests",
+  "private": true,
+  "scripts": { "test": "node run.js" },
+  "devDependencies": { "acorn": "8.14.0" }
+}
