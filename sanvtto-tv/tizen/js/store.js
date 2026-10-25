@@ -5,10 +5,12 @@
     var DEFAULTS = {
         theme: 0,        // 0 automático, 1 claro, 2 escuro
         idleMin: 10,     // abrir o quadro após N min sem uso (0 = nunca)
-        frameStyle: 1,   // 0 tela cheia, 1 passe-partout branco, 2 preto, 3 madeira, 4 moldura preta
+        frameStyle: 1,   // 0 tela cheia, 1 moderno, 2 shadowbox, 3 madeira, 4 moldura preta
+        matColor: 0,     // cor do passe-partout (ver Art.MATS)
         artInterval: 15, // minutos entre obras
         nightDim: true,
         artClock: true,
+        glass: 0,        // transparência: 0 vidro, 1 média, 2 reduzida
         artIndex: 0,
         lastArtFetch: 0
     };
@@ -99,6 +101,42 @@
         return a;
     }
 
+    /** Miniatura de 360 px para a galeria: decodificar a obra inteira em cada item travaria a TV. */
+    function makeThumb(blob) {
+        return new Promise(function (resolve) {
+            var url = global.URL.createObjectURL(blob);
+            var img = new global.Image();
+            img.onload = function () {
+                global.URL.revokeObjectURL(url);
+                try {
+                    var w = 360, h = Math.max(1, Math.round(img.height * w / img.width));
+                    var c = global.document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    c.getContext('2d').drawImage(img, 0, 0, w, h);
+                    if (c.toBlob) c.toBlob(function (b) { resolve(b); }, 'image/jpeg', 0.85);
+                    else resolve(null);
+                } catch (e) { resolve(null); }
+            };
+            img.onerror = function () { global.URL.revokeObjectURL(url); resolve(null); };
+            img.src = url;
+        });
+    }
+
+    var thumbing = false;
+
+    /** Gera miniaturas que faltam, uma por vez. Nunca rejeita. */
+    function ensureThumbs() {
+        if (thumbing) return Promise.resolve();
+        thumbing = true;
+        return listArt().then(function (all) {
+            return all.filter(function (a) { return !a.thumb; }).reduce(function (p, a) {
+                return p.then(function () {
+                    return makeThumb(a.blob).then(function (t) { if (t) { a.thumb = t; return putArt(a); } });
+                }).catch(function () {});
+            }, Promise.resolve());
+        }).catch(function () {}).then(function () { thumbing = false; });
+    }
+
     function isImageBlob(blob) {
         return blob && blob.size > 1000 && /^image\//.test(blob.type || 'image/jpeg');
     }
@@ -159,7 +197,10 @@
                 return fetchWithTimeout(it.url, 30000).then(function (r) { return r.blob(); }).then(function (blob) {
                     if (!isImageBlob(blob)) return;
                     var rec = { id: it.id, title: it.title, artist: it.artist, date: it.date, blob: blob, added: Date.now() };
-                    return putArt(rec).then(function () { saved.push(rec); });
+                    return makeThumb(blob).then(function (t) {
+                        if (t) rec.thumb = t;
+                        return putArt(rec);
+                    }).then(function () { saved.push(rec); });
                 }).catch(function () { /* pula esta obra */ });
             });
         }, Promise.resolve()).then(function () { return saved; });
@@ -191,5 +232,5 @@
         return refreshing;
     }
 
-    global.Store = { Prefs: Prefs, listArt: listArt, putArt: putArt, refreshArt: refreshArt };
+    global.Store = { Prefs: Prefs, listArt: listArt, putArt: putArt, refreshArt: refreshArt, ensureThumbs: ensureThumbs };
 })(this);

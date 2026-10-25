@@ -314,6 +314,65 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
+    await test('galeria do Modo Arte: escolher obra, estilo e cor pelo controle', async () => {
+        const page = await newPage({ clock: true, clockTime: new Date('2026-03-15T14:00:00-03:00') });
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 2; i++) await page.clock.runFor(100);
+        assert(await page.evaluate(async () => (await window.Store.listArt()).every((a) => a.thumb && a.thumb.size > 0)), 'miniaturas não geradas');
+        await page.evaluate(() => window.Nav.focus(document.querySelector('#grid .card')));
+        const before = await page.evaluate(() => window.Nav.current().getAttribute('data-app'));
+        await page.evaluate(() => { localStorage.setItem('sv.artIndex', 0); window.SanvttoApp.openArt(); });
+        await page.clock.runFor(2500);
+        await key(page, K.D, { wait: 0 });
+        await page.waitForSelector('#galArt .gal-thumb');
+        assert(!(await page.$eval('#gallery', (e) => e.hidden)), 'galeria não abriu');
+        assert.strictEqual(await page.$$eval('#galArt .gal-thumb', (e) => e.length), 2);
+        assert.strictEqual(await page.$$eval('#galStyle .gal-chip', (e) => e.length), 5);
+        assert.strictEqual(await page.$$eval('#galMat .gal-swatch', (e) => e.length), 7);
+        assert.strictEqual(await page.evaluate(() => window.Nav.current().classList.contains('selected')), true, 'começa na obra em exibição');
+        await page.waitForTimeout(2600); // fade do CSS roda em tempo real
+        await page.screenshot({ path: path.join(OUT, 'galeria.png') });
+        // escolhe a outra obra
+        await key(page, K.R, { wait: 0 });
+        const want = await page.evaluate(() => window.Nav.current().getAttribute('data-title'));
+        await key(page, K.OK, { wait: 0 });
+        await page.clock.runFor(2500);
+        assert.strictEqual(await page.textContent('#artTitle'), want, 'obra escolhida não apareceu');
+        assert(!(await page.$eval('#gallery', (e) => e.hidden)), 'galeria deve continuar aberta');
+        // estilo Shadowbox
+        await key(page, K.D, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => window.Nav.current().parentNode.id), 'galStyle');
+        await page.evaluate(() => window.Nav.focus(document.querySelector('#galStyle [data-id="2"]')));
+        await key(page, K.OK, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => localStorage.getItem('sv.frameStyle')), '2');
+        // cor Sálvia
+        await key(page, K.R, { wait: 0 }); await key(page, K.R, { wait: 0 }); await key(page, K.R, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => window.Nav.current().parentNode.id), 'galMat', 'direita leva às cores');
+        await page.evaluate(() => window.Nav.focus(document.querySelector('#galMat [data-id="3"]')));
+        await key(page, K.OK, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => localStorage.getItem('sv.matColor')), '3');
+        await page.clock.runFor(400);
+        await page.waitForTimeout(2600);
+        await page.screenshot({ path: path.join(OUT, 'galeria-shadowbox-salvia.png') });
+        // ↑ até fechar a galeria
+        for (let i = 0; i < 4; i++) await key(page, K.U, { wait: 0 });
+        assert(await page.$eval('#gallery', (e) => e.hidden), '↑ deve fechar a galeria');
+        await page.clock.runFor(8000);
+        await page.waitForTimeout(1000);
+        await page.screenshot({ path: path.join(OUT, 'quadro-shadowbox-salvia.png') });
+        // vinho = passe-partout escuro: texto claro
+        await key(page, K.D, { wait: 0 });
+        await page.waitForSelector('#galMat [data-id="5"]');
+        await page.evaluate(() => window.Nav.focus(document.querySelector('#galMat [data-id="5"]')));
+        await key(page, K.OK, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => document.getElementById('art').classList.contains('on-mat')), false, 'texto deve ficar claro no vinho');
+        await key(page, K.BACK, { wait: 0 });
+        assert(await page.$eval('#gallery', (e) => e.hidden));
+        await key(page, K.BACK, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'home');
+        assert.strictEqual(await page.evaluate(() => window.Nav.current().getAttribute('data-app')), before, 'foco volta para o app de antes');
+        await noErrors(page);
+    });
+
     await test('obra corrompida no acervo é pulada sem travar', async () => {
         const page = await newPage({ offline: true });
         await page.evaluate(async () => {
@@ -346,14 +405,14 @@ async function noErrors(page) {
 
     await test('escurece o quadro à noite e o tema muda sozinho', async () => {
         const page = await newPage({ clock: true, offline: true, clockTime: new Date('2026-03-15T22:30:00-03:00') });
-        assert.strictEqual(await page.evaluate(() => document.body.className), 'dark', 'à noite o tema é escuro');
+        assert.strictEqual(await page.evaluate(() => document.body.classList.contains('dark')), true, 'à noite o tema é escuro');
         await page.evaluate(() => window.SanvttoApp.openArt());
         await page.clock.runFor(500);
         const dim = await page.evaluate(() => parseFloat(document.getElementById('artDim').style.opacity));
         assert(dim > 0.2 && dim <= 0.6, 'escurecimento: ' + dim);
         await noErrors(page);
         const day = await newPage({ clock: true, clockTime: new Date('2026-03-15T13:00:00-03:00') });
-        assert.strictEqual(await day.evaluate(() => document.body.className), 'light', 'de dia o tema é claro');
+        assert.strictEqual(await day.evaluate(() => document.body.classList.contains('light')), true, 'de dia o tema é claro');
         await day.waitForTimeout(400);
         await day.screenshot({ path: path.join(OUT, 'home-claro.png') });
         await noErrors(day);
@@ -394,6 +453,40 @@ async function noErrors(page) {
         await page.screenshot({ path: path.join(OUT, 'ajustes-fim.png') });
         await key(page, K.BACK);
         assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'home');
+        await noErrors(page);
+    });
+
+    await test('vidro: transparência ajustável e prints sobre uma obra', async () => {
+        const page = await newPage();
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 2; i++) await page.waitForTimeout(100);
+        await page.evaluate(() => { localStorage.setItem('sv.artIndex', 0); });
+        await page.evaluate(() => window.SanvttoApp.openArt());
+        await key(page, K.BACK, { wait: 1500 }); // fecha o quadro e recarrega o fundo com a obra
+        for (const [g, name] of [[0, 'vidro'], [1, 'media'], [2, 'reduzida']]) {
+            await page.evaluate((v) => { localStorage.setItem('sv.glass', v); }, g);
+            await page.evaluate(() => window.SanvttoApp.openSettings());
+            await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 8 })));
+            const cls = await page.evaluate(() => document.body.className);
+            assert.strictEqual(cls.includes('glass-med'), g === 1, cls);
+            assert.strictEqual(cls.includes('glass-low'), g === 2, cls);
+            await page.waitForTimeout(400);
+            await page.screenshot({ path: path.join(OUT, 'vidro-' + name + '.png') });
+        }
+        await page.evaluate(() => localStorage.setItem('sv.glass', 0));
+        await page.evaluate(() => window.SanvttoApp.openSettings());
+        assert(await page.evaluate(() => document.body.classList.contains('in-settings')), 'tela inicial deve sumir atrás dos ajustes');
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: path.join(OUT, 'vidro-ajustes.png') });
+        // alterna a transparência pelos próprios ajustes
+        await key(page, K.D);
+        assert.strictEqual(await page.evaluate(() => window.Nav.current().firstChild.textContent), 'Transparência');
+        await key(page, K.OK);
+        assert(await page.evaluate(() => document.body.classList.contains('glass-med')), 'ajuste não aplicou');
+        await key(page, K.BACK);
+        assert(!(await page.evaluate(() => document.body.classList.contains('in-settings'))));
+        await page.evaluate(() => window.SanvttoApp.openMenu(document.querySelector('#favRow .card')));
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT, 'vidro-menu.png') });
         await noErrors(page);
     });
 

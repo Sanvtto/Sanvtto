@@ -54,9 +54,13 @@
         var t = Prefs.get('theme');
         var dark = t === 2 || (t === 0 && global.Theme.isNight(new Date()));
         if (dark !== lastDark) {
-            doc.body.className = dark ? 'dark' : 'light';
+            doc.body.classList.toggle('dark', dark);
+            doc.body.classList.toggle('light', !dark);
             lastDark = dark;
         }
+        var g = Prefs.get('glass');
+        doc.body.classList.toggle('glass-med', g === 1);
+        doc.body.classList.toggle('glass-low', g === 2);
     }
 
     function tick() {
@@ -90,8 +94,11 @@
         var card = doc.createElement('div');
         card.className = 'card focusable';
         card.style.height = h + 'px';
-        card.style.backgroundColor = app.color;
         card.setAttribute('data-app', app.id);
+        var tint = doc.createElement('div');
+        tint.className = 'tint';
+        tint.style.backgroundColor = app.color;
+        card.appendChild(tint);
         card.setAttribute('data-kind', fav ? 'fav' : 'app');
         var initial = doc.createElement('div');
         initial.className = 'initial';
@@ -104,6 +111,9 @@
             img.src = app.icon;
             card.appendChild(img);
         }
+        var edge = doc.createElement('div');
+        edge.className = 'edge';
+        card.appendChild(edge);
         var sheen = doc.createElement('div');
         sheen.className = 'sheen';
         card.appendChild(sheen);
@@ -249,10 +259,12 @@
     var SETTINGS = [
         ['h', 'Aparência'],
         ['c', 'Tema', 'theme', ['Automático (pôr do sol)', 'Claro', 'Escuro'], [0, 1, 2]],
+        ['c', 'Transparência', 'glass', ['Vidro', 'Média', 'Reduzida'], [0, 1, 2]],
         ['h', 'Modo quadro'],
         ['a', 'Abrir o quadro agora', function () { closeSettings(); openArt(); }],
         ['c', 'Abrir sozinho após', 'idleMin', ['Nunca', '2 min', '5 min', '10 min', '15 min', '30 min'], [0, 2, 5, 10, 15, 30]],
-        ['c', 'Moldura', 'frameStyle', ['Tela cheia', 'Passe-partout branco', 'Passe-partout preto', 'Moldura de madeira', 'Moldura preta'], [0, 1, 2, 3, 4]],
+        ['c', 'Estilo', 'frameStyle', Art.STYLES.map(function (s) { return s.name; }), Art.STYLES.map(function (s) { return s.id; })],
+        ['c', 'Cor do passe-partout', 'matColor', Art.MATS.map(function (m) { return m.name; }), Art.MATS.map(function (m) { return m.id; })],
         ['c', 'Trocar obra a cada', 'artInterval', ['1 min', '5 min', '15 min', '30 min', '1 hora', '3 horas'], [1, 5, 15, 30, 60, 180]],
         ['t', 'Escurecer à noite', 'nightDim'],
         ['t', 'Mostrar relógio', 'artClock'],
@@ -294,7 +306,7 @@
                     idx = (idx + 1) % s[4].length;
                     Prefs.set(s[2], s[4][idx]);
                     v.textContent = s[3][idx];
-                    if (s[2] === 'theme') applyTheme();
+                    if (s[2] === 'theme' || s[2] === 'glass') applyTheme();
                     if (s[2] === 'idleMin') resetIdle();
                 };
             } else if (s[0] === 't') {
@@ -315,6 +327,8 @@
             list.appendChild(row);
         });
         $('settings').hidden = false;
+        doc.body.classList.add('in-settings');
+        applyTheme();
         Nav.setScope($('settings'));
         Nav.focus(Nav.first());
     }
@@ -327,6 +341,8 @@
 
     function closeSettings() {
         $('settings').hidden = true;
+        doc.body.classList.remove('in-settings');
+        applyTheme();
         mode = 'home';
         Nav.setScope($('home'));
         Nav.focus(returnFocus && doc.body.contains(returnFocus) ? returnFocus : Nav.first());
@@ -334,8 +350,11 @@
 
     // ---------------------------------------------------------------- quadro
 
+    var artReturnFocus = null;
+
     function openArt() {
         if (safeMode) return;
+        artReturnFocus = Nav.current();
         mode = 'art';
         Art.open();
     }
@@ -343,6 +362,7 @@
     Art.onClose = function () {
         mode = 'home';
         Nav.setScope($('home'));
+        if (artReturnFocus && doc.body.contains(artReturnFocus)) Nav.focus(artReturnFocus);
         resetIdle();
         loadBackground();
     };
@@ -374,8 +394,8 @@
                 c.imageSmoothingEnabled = true;
                 // reduz em duas etapas para um desfoque mais suave
                 var tmp = doc.createElement('canvas');
-                tmp.width = 16; tmp.height = 9;
-                tmp.getContext('2d').drawImage(src, 0, 0, 16, 9);
+                tmp.width = 24; tmp.height = 14;
+                tmp.getContext('2d').drawImage(src, 0, 0, 24, 14);
                 c.clearRect(0, 0, cv.width, cv.height);
                 c.drawImage(tmp, 0, 0, cv.width, cv.height);
                 cv.classList.add('shown');
@@ -399,7 +419,7 @@
         list.innerHTML = '';
         apps.forEach(function (a) {
             var p = doc.createElement('div');
-            p.className = 'pill focusable';
+            p.className = 'pill glass focusable';
             p.textContent = a.name;
             p.setAttribute('data-launch', a.id);
             list.appendChild(p);
@@ -485,6 +505,7 @@
     Nav.onFocus = function (el) {
         if (mode === 'home') scrollTo(el);
         else if (mode === 'settings') scrollSettings(el);
+        else if (mode === 'art') Art.scrollTo(el);
     };
 
     // ---------------------------------------------------------------- início

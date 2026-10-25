@@ -9,7 +9,7 @@
     <script src="$WEBAPIS/webapis/webapis.js"></script>
 </head>
 <body class="dark">
-<div id="bg"><canvas id="bgCanvas" width="64" height="36"></canvas></div>
+<div id="bg"><canvas id="bgCanvas" width="96" height="54"></canvas></div>
 <div id="scrim"></div>
 
 <main id="home">
@@ -20,14 +20,14 @@
                 <div id="date"></div>
             </div>
             <div class="pills">
-                <div class="pill focusable" id="btnArt" data-action="art">Quadro</div>
-                <div class="pill focusable" id="btnSettings" data-action="settings">Ajustes</div>
+                <div class="pill glass focusable" id="btnArt" data-action="art">Quadro</div>
+                <div class="pill glass focusable" id="btnSettings" data-action="settings">Ajustes</div>
             </div>
         </header>
         <section id="safe" hidden>
             <h1>Modo seguro</h1>
             <p>O Sanvtto TV teve erros e abriu esta lista simples para você não ficar sem tela inicial.</p>
-            <div class="pill focusable" data-action="leaveSafe">Voltar ao modo normal</div>
+            <div class="pill glass focusable" data-action="leaveSafe">Voltar ao modo normal</div>
             <div id="safeList"></div>
         </section>
         <section id="main">
@@ -52,7 +52,7 @@
         <div class="settings-title">Ajustes</div>
         <div class="settings-sub">Sanvtto TV 1.0 · Tizen</div>
     </div>
-    <div class="settings-right"><div id="settingsList"></div></div>
+    <div class="settings-right glass"><div class="settings-viewport"><div id="settingsList"></div></div></div>
 </div>
 
 <div id="art" hidden>
@@ -61,6 +61,15 @@
     <div id="artInfo"><div id="artTitle"></div><div id="artSub"></div></div>
     <div id="artClock"></div>
     <div id="artDim"></div>
+    <div id="gallery" hidden>
+        <div class="gal-head"><span>Obras</span><span id="galCount"></span></div>
+        <div class="gal-viewport"><div id="galArt" class="gal-row"></div></div>
+        <div class="gal-cols">
+            <div><div class="gal-head">Estilo</div><div id="galStyle" class="gal-row wrap"></div></div>
+            <div><div class="gal-head">Cor do passe-partout</div><div id="galMat" class="gal-row wrap"></div></div>
+        </div>
+        <div class="gal-hint">OK escolhe · ↑ fecha · Voltar sai</div>
+    </div>
 </div>
 
 <div id="toast" hidden></div>

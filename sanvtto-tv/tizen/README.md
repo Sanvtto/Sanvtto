@@ -1,7 +1,13 @@
 # Sanvtto TV para Samsung (Tizen)
 
-Versão para TVs Samsung com Tizen (testada para a **Crystal UHD BU8000**, Tizen 6.5). Tem o mesmo visual e a mesma lógica do app Android:
-tela inicial no estilo Apple TV, tema que escurece sozinho com o pôr do sol, modo quadro no estilo The Frame e modo seguro.
+Versão para TVs Samsung com Tizen, feita para a **Crystal UHD BU8000** (Tizen 6.5) e testada num navegador com a API da TV simulada. Inclui:
+
+- **Visual de vidro** (Liquid Glass, como no macOS 26/27): cards, botões e menus translúcidos com bordas de luz, e a obra do quadro aparecendo
+  desfocada atrás. Em **Ajustes → Transparência** dá para escolher **Vidro**, **Média** ou **Reduzida** (para quando a leitura ficar difícil).
+- **Tela inicial** no estilo Apple TV e **tema que escurece sozinho** com o pôr do sol.
+- **Modo quadro** no estilo do Modo Arte da The Frame: passe-partout **Moderno** ou **Shadowbox**, moldura de madeira ou preta, 7 cores
+  (Polar, Quente, Neutro, Sálvia, Areia, Vinho, Preto). Aperte **↓** no quadro para abrir a **galeria**, com as obras, os estilos e as cores.
+- **Modo seguro** se der erro.
 
 ## O que a Samsung permite e o que não permite
 
@@ -35,11 +41,12 @@ Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alte
 ## Teclas
 - **Setas / OK**: navegar e abrir. **Segurar OK**: menu do app (favoritar, mover, remover).
 - **Voltar**: fecha menus. Na tela inicial, só volta ao topo, sem nunca fechar o app.
-- No **quadro**: ← → trocam a obra, OK mostra título e autor, qualquer outra tecla volta.
+- No **quadro**: ← → trocam a obra, OK mostra título e autor, **↓ abre a galeria** e Voltar sai.
+- Na **galeria**: OK escolhe, ↑ na primeira fileira fecha.
 
 ## Desenvolvimento
 
 ```bash
 ./build-wgt.sh                      # gera release/SanvttoTV.wgt
-cd tests && npm install && npm test # 21 testes no Chromium com a API da TV simulada (prints em test-output/)
+cd tests && npm install && npm test # 23 testes no Chromium com a API da TV simulada (prints em test-output/)
 ```
