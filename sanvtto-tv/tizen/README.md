@@ -8,6 +8,9 @@ Versão para TVs Samsung com Tizen, feita para a **Crystal UHD BU8000** (Tizen 6
 - **Modo quadro** no estilo do Modo Arte da The Frame: passe-partout **Moderno** ou **Shadowbox**, moldura de madeira ou preta, 7 cores
   (Polar, Quente, Neutro, Sálvia, Areia, Vinho, Preto). Aperte **↓** no quadro para abrir a **galeria**, com as obras, os estilos e as cores.
 - **Modo seguro** se der erro.
+- **Ajustes › Diagnóstico** mostra quantos apps a TV entregou e se as obras baixaram (com o erro, se houver).
+  Se a TV não liberar a lista de apps, o app usa uma lista reserva (Netflix, YouTube, Prime Video, Disney+, Spotify, Apple TV, Plex).
+  As obras vêm do Art Institute of Chicago, do Wikimedia Commons ou do Met (o que funcionar), e aparecem direto da internet se a TV não deixar guardar.
 
 ## O que a Samsung permite e o que não permite
 
@@ -33,7 +36,9 @@ Versão para TVs Samsung com Tizen, feita para a **Crystal UHD BU8000** (Tizen 6
 6. O "Sanvtto TV" aparece em **Apps**. Para deixá-lo no começo da barra do Smart Hub: Apps → segure OK no ícone → **Mover**.
 
 ### Para abrir sozinho ao ligar
-Configurações → Geral → Recursos Inteligentes → **Executar último app** (ligado). Se o último app usado for o Sanvtto TV, a TV já liga nele.
+Configurações → Todas as configurações → Geral e Privacidade → **Opções da tela inicial** → **Executar último app** (ligado)
+e **Iniciar com a tela inicial do Smart Hub** (desligado). Se o último app usado for o Sanvtto TV, a TV já liga nele.
+Parado por 5 minutos em qualquer tela do Sanvtto TV, ele vira quadro sozinho.
 
 ### Para desfazer
 Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alterado.
@@ -48,5 +53,5 @@ Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alte
 
 ```bash
 ./build-wgt.sh                      # gera release/SanvttoTV.wgt
-cd tests && npm install && npm test # 23 testes no Chromium com a API da TV simulada (prints em test-output/)
+cd tests && npm install && npm test # 30 testes no Chromium com a API da TV simulada (prints em test-output/)
 ```

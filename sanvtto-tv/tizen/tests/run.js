@@ -37,9 +37,25 @@ async function newPage(opts = {}) {
     if (opts.init) await page.addInitScript(opts.init);
     await page.addInitScript({ path: path.join(__dirname, 'mock-tizen.js') });
     // museus simulados (ou offline)
-    await page.route(/api\.artic\.edu|metmuseum\.org|artic\.edu\/iiif/, async (route) => {
+    await page.route(/upload\.wikimedia\.org/, async (route) => {
+        if (opts.offline) return route.abort('internetdisconnected');
+        if (opts.noCors && route.request().resourceType() === 'fetch') return route.abort('accessdenied');
+        return route.fulfill({ contentType: 'image/jpeg', body: jpeg });
+    });
+    await page.route(/api\.artic\.edu|metmuseum\.org|artic\.edu\/iiif|wikimedia\.org/, async (route) => {
         const url = route.request().url();
         if (opts.offline) return route.abort('internetdisconnected');
+        if (opts.aicDown && url.includes('api.artic.edu')) return route.fulfill({ status: 503, body: 'fora do ar' });
+        // TV que bloqueia baixar a imagem (CORS), mas deixa um <img> mostrar
+        if (opts.noCors && route.request().resourceType() === 'fetch' && /iiif|upload\.wikimedia/.test(url)) return route.abort('accessdenied');
+        if (url.includes('commons.wikimedia.org/w/api.php')) {
+            return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ query: { pages: {
+                11: { pageid: 11, title: 'File:Paisagem.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a/paisagem.jpg', width: 1600, height: 1000,
+                    extmetadata: { ObjectName: { value: 'Paisagem com Rio' }, Artist: { value: '<a href="#">Fulano de Tal</a>' }, DateTimeOriginal: { value: '1882' } } }] },
+                12: { pageid: 12, title: 'File:Torre.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a/torre.jpg', width: 300, height: 1500 }] }
+            } } }) });
+        }
+        if (url.includes('upload.wikimedia.org')) return route.fulfill({ contentType: 'image/jpeg', body: jpeg });
         if (url.includes('/artworks/search')) {
             return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
                 config: { iiif_url: 'https://www.artic.edu/iiif/2' },
@@ -258,6 +274,78 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
+    await test('lista de apps bloqueada: usa a lista reserva só com os instalados', async () => {
+        const page = await newPage({ init: () => {
+            window.__APPS_FAIL = true;
+            window.__INSTALLED_KNOWN = [{ id: '3201907018807', name: 'Netflix', iconPath: '' }, { id: '111299001912', name: 'YouTube', iconPath: '' }];
+        } });
+        await page.waitForSelector('#grid .card');
+        const ids = await page.$$eval('#grid .card', (e) => e.map((x) => x.getAttribute('data-app')));
+        assert.deepStrictEqual(ids.sort(), ['111299001912', '3201907018807']);
+        assert((await page.$$eval('#favRow .card', (e) => e.length)) === 2, 'viram favoritos');
+        const diag = await page.evaluate(() => window.Store.Diag.get('apps'));
+        assert(/lista reserva com 2/.test(diag) && /SecurityError/.test(diag), diag);
+        await key(page, K.OK);
+        assert.strictEqual((await page.evaluate(() => window.__launched))[0], '3201907018807');
+        await noErrors(page);
+    });
+
+    await test('lista bloqueada e TV não deixa conferir: mostra a lista reserva inteira', async () => {
+        const page = await newPage({ init: () => { window.__APPS_FAIL = true; window.__APPINFO_SECURITY = true; } });
+        await page.waitForSelector('#grid .card');
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 7);
+        assert(/sem conferir/.test(await page.evaluate(() => window.Store.Diag.get('apps'))));
+        await noErrors(page);
+    });
+
+    await test('obras sem CORS: aparecem direto da internet', async () => {
+        const page = await newPage({ noCors: true });
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 2; i++) await page.waitForTimeout(100);
+        const recs = await page.evaluate(async () => (await window.Store.listArt()).map((a) => ({ blob: !!a.blob, url: a.url || '' })));
+        assert.strictEqual(recs.length, 2, JSON.stringify(recs));
+        assert(recs.every((r) => !r.blob && r.url.startsWith('https://www.artic.edu/iiif/')), JSON.stringify(recs));
+        assert(/direto da internet/.test(await page.evaluate(() => window.Store.Diag.get('art'))));
+        await page.evaluate(() => { localStorage.setItem('sv.artIndex', 0); window.SanvttoApp.openArt(); });
+        await page.waitForTimeout(2600);
+        const title = await page.textContent('#artTitle');
+        assert(['A Tarde no Campo', 'Retrato'].includes(title), 'título: ' + title);
+        await key(page, K.D);
+        await page.waitForSelector('#galArt .gal-thumb img');
+        await page.waitForTimeout(300);
+        assert(!(await page.$$eval('#galArt .gal-thumb', (e) => e.some((x) => x.classList.contains('broken')))), 'miniatura quebrada');
+        await noErrors(page);
+    });
+
+    await test('Art Institute fora do ar: busca no Wikimedia', async () => {
+        const page = await newPage({ aicDown: true });
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 1; i++) await page.waitForTimeout(100);
+        await page.waitForTimeout(500);
+        const list = await page.evaluate(async () => (await window.Store.listArt()).map((a) => [a.title, a.artist, a.date]));
+        assert.deepStrictEqual(list, [['Paisagem com Rio', 'Fulano de Tal', '1882']], 'torre estreita deve ser ignorada');
+        const diag = await page.evaluate(() => window.Store.Diag.get('art'));
+        assert(/Wikimedia/.test(diag), diag);
+        await noErrors(page);
+    });
+
+    await test('tudo offline: o quadro explica o motivo e o diagnóstico mostra o erro', async () => {
+        const page = await newPage({ offline: true });
+        await page.evaluate(() => window.Store.refreshArt(true));
+        const diag = await page.evaluate(() => window.Store.Diag.get('art'));
+        assert(/falhou/.test(diag) && /Art Institute/.test(diag) && /Wikimedia/.test(diag) && /Met/.test(diag), diag);
+        await page.evaluate(() => window.SanvttoApp.openArt());
+        await page.waitForTimeout(800);
+        assert(/falhou/.test(await page.textContent('#artSub')), 'legenda deve mostrar o motivo');
+        await key(page, K.BACK);
+        await page.evaluate(() => window.SanvttoApp.openSettings());
+        await page.evaluate(() => { const r = [...document.querySelectorAll('.set-row')].find((x) => x.textContent.startsWith('Obras')); window.Nav.focus(r); });
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: path.join(OUT, 'diagnostico.png') });
+        const shown = await page.evaluate(() => [...document.querySelectorAll('.set-row')].map((r) => r.textContent));
+        assert(shown.some((t) => t.startsWith('Apps') && /apps/.test(t)), 'linha Apps');
+        assert(shown.some((t) => t.startsWith('Obras') && /falhou/.test(t)), 'linha Obras');
+        await noErrors(page);
+    });
+
     await test('100 apps: monta rápido e navega liso', async () => {
         const names = Array.from({ length: 100 }, (_, i) => 'App ' + String(i).padStart(3, '0'));
         const page = await newPage({ init: `window.__APP_NAMES = ${JSON.stringify(names)};` });
@@ -336,6 +424,7 @@ async function noErrors(page) {
         const want = await page.evaluate(() => window.Nav.current().getAttribute('data-title'));
         await key(page, K.OK, { wait: 0 });
         await page.clock.runFor(2500);
+
         assert.strictEqual(await page.textContent('#artTitle'), want, 'obra escolhida não apareceu');
         assert(!(await page.$eval('#gallery', (e) => e.hidden)), 'galeria deve continuar aberta');
         // estilo Shadowbox
@@ -373,6 +462,47 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
+    await test('legenda e relógio (com dia da semana) ficam no passe-partout, sem cobrir a obra', async () => {
+        const page = await newPage({ clock: true, clockTime: new Date('2026-10-24T16:15:00-03:00') });
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 2; i++) await page.clock.runFor(100);
+        const ids = await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.id));
+        for (const style of [0, 1, 2, 3, 4]) {
+            for (const id of ids) {
+                await page.evaluate(([s]) => { localStorage.setItem('sv.frameStyle', s); localStorage.setItem('sv.matColor', 0); }, [style]);
+                await page.evaluate(() => window.SanvttoApp.openArt());
+                await key(page, K.D, { wait: 0 });
+                await page.waitForSelector('#galArt .gal-thumb');
+                await page.evaluate((v) => window.Nav.focus(document.querySelector('#galArt [data-art="' + v + '"]')), id);
+                await key(page, K.OK, { wait: 0 });
+                await page.clock.runFor(300);
+                await key(page, K.BACK, { wait: 0 }); // fecha a galeria
+                await key(page, K.OK, { wait: 0 });   // mostra a legenda
+                await page.waitForTimeout(900);
+                const r = await page.evaluate(() => {
+                    const lay = window.Art.layout();
+                    const box = (id) => document.getElementById(id).getBoundingClientRect().toJSON();
+                    return { lay, info: box('artInfo'), clock: box('artClock'), text: document.getElementById('artClock').textContent };
+                });
+                // (o fuso do computador de testes pode ser outro: confere o formato, não a hora)
+                assert(/^Sábado, 24 de outubro · \d\d:\d\d$/.test(r.text), 'relógio: ' + r.text);
+                const tag = 'estilo ' + style + ' / ' + id;
+                for (const k of ['info', 'clock']) {
+                    const b = r[k];
+                    assert(b.left >= 0 && b.right <= 1920 && b.top >= 0 && b.bottom <= 1080, tag + ': ' + k + ' fora da tela');
+                    if (style !== 0) {
+                        const a = r.lay.art;
+                        assert(b.top >= a.y + a.h, tag + ': ' + k + ' em cima da obra ' + JSON.stringify(b) + ' ' + JSON.stringify(a));
+                        assert(b.bottom <= r.lay.matBottom, tag + ': ' + k + ' saiu do passe-partout');
+                    }
+                }
+                assert(r.info.right <= r.clock.left + 1, tag + ': legenda encosta no relógio');
+                if (style === 1) await page.screenshot({ path: path.join(OUT, 'legenda-moderno-' + id.replace(':', '') + '.png') });
+                await key(page, K.BACK, { wait: 0 }); // sai do quadro
+            }
+        }
+        await noErrors(page);
+    });
+
     await test('obra corrompida no acervo é pulada sem travar', async () => {
         const page = await newPage({ offline: true });
         await page.evaluate(async () => {
@@ -400,6 +530,23 @@ async function noErrors(page) {
         await page.clock.runFor(61000);
         const t2 = await page.textContent('#artTitle');
         assert.notStrictEqual(t1, t2, 'não trocou de obra sozinho');
+        await noErrors(page);
+    });
+
+    await test('quadro abre sozinho mesmo parado nos ajustes ou no menu de um app', async () => {
+        const page = await newPage({ clock: true, offline: true });
+        assert.strictEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('sv.idleMin') || '5')), 5, 'padrão 5 min');
+        await page.evaluate(() => window.SanvttoApp.openSettings());
+        await page.clock.runFor(5 * 60000 + 1000);
+        assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'art', 'não abriu a partir dos ajustes');
+        assert(await page.$eval('#settings', (e) => e.hidden), 'ajustes deveriam fechar');
+        await key(page, K.BACK, { wait: 0 });
+        await page.evaluate(() => window.SanvttoApp.openMenu(document.querySelector('#favRow .card')));
+        await page.clock.runFor(5 * 60000 + 1000);
+        assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'art', 'não abriu a partir do menu');
+        assert(await page.$eval('#menu', (e) => e.hidden), 'menu deveria fechar');
+        await key(page, K.BACK, { wait: 0 });
+        assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'home');
         await noErrors(page);
     });
 

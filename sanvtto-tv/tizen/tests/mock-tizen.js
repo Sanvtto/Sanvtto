@@ -19,12 +19,22 @@
     window.tizen = {
         application: {
             getAppsInfo: function (ok, err) {
-                if (window.__APPS_FAIL) { setTimeout(function () { err(new Error('x')); }, 5); return; }
+                if (window.__APPS_FAIL) {
+                    setTimeout(function () { var e = new Error('acesso negado'); e.name = 'SecurityError'; err(e); }, 5);
+                    return;
+                }
                 setTimeout(function () { ok(apps); }, 20);
             },
             launch: function (id, ok, err) {
                 window.__launched.push(id);
                 setTimeout(function () { id === 'quebrado' ? err(new Error('x')) : ok(); }, 5);
+            },
+            getAppInfo: function (id) {
+                if (window.__APPINFO_SECURITY) { var s = new Error('sem permissão'); s.name = 'SecurityError'; throw s; }
+                var found = apps.filter(function (a) { return a.id === id; })[0]
+                    || (window.__INSTALLED_KNOWN || []).filter(function (a) { return a.id === id; })[0];
+                if (!found) { var e = new Error('não instalado'); e.name = 'NotFoundError'; throw e; }
+                return found;
             },
             getCurrentApplication: function () { return { appInfo: { id: 'SnvttoTV01.SanvttoTV' }, exit: function () { window.__exited = true; } }; }
         },

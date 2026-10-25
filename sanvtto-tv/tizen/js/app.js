@@ -274,7 +274,11 @@
         }],
         ['h', 'Sistema'],
         ['a', 'Recarregar lista de apps', function () { loadApps().then(function () { toast(apps.length + ' apps'); }); }],
-        ['i', 'Abrir ao ligar a TV', 'Configurações › Geral › Recursos Inteligentes › Executar último app']
+        ['i', 'Abrir ao ligar a TV', 'Todas as configurações › Geral e Privacidade › Opções da tela inicial › Executar último app'],
+        ['h', 'Diagnóstico'],
+        ['i', 'Apps', function () { return global.Store.Diag.get('apps'); }],
+        ['i', 'Obras', function () { return global.Store.Diag.get('art'); }],
+        ['i', 'Versão', function () { return 'Sanvtto TV 1.1 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
     ];
 
     function openSettings() {
@@ -320,8 +324,8 @@
                 v.textContent = '›';
                 row.__run = s[2];
             } else {
-                v.textContent = s[2];
-                v.style.fontSize = '22px';
+                v.textContent = typeof s[2] === 'function' ? s[2]() : s[2];
+                v.className = 'value info';
                 row.__run = function () {};
             }
             list.appendChild(row);
@@ -372,7 +376,11 @@
         var m = Prefs.get('idleMin');
         if (m > 0 && !safeMode) {
             idleTimer = setTimeout(function () {
-                if (mode === 'home' && !doc.hidden) openArt();
+                if (mode === 'art' || doc.hidden) return;
+                // parado em qualquer tela do app (ajustes, menu de um app): fecha e vira quadro
+                if (mode === 'menu') closeMenu(null);
+                if (mode === 'settings') closeSettings();
+                openArt();
             }, m * 60000);
         }
     }
@@ -401,10 +409,11 @@
                 cv.classList.add('shown');
             };
             if (!a) { draw(Art.generated(idx, 160, 90)); return; }
-            var url = global.URL.createObjectURL(a.blob);
+            var url = a.blob ? global.URL.createObjectURL(a.blob) : a.url;
             var img = new global.Image();
-            img.onload = function () { global.URL.revokeObjectURL(url); draw(img); };
-            img.onerror = function () { global.URL.revokeObjectURL(url); };
+            var free = function () { if (a.blob) global.URL.revokeObjectURL(url); };
+            img.onload = function () { free(); draw(img); };
+            img.onerror = free;
             img.src = url;
         });
     }

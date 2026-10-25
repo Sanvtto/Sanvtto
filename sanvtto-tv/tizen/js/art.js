@@ -52,7 +52,7 @@
         if (style === FULL) {
             c.fillStyle = '#000';
             c.fillRect(0, 0, W, H);
-            return { x: 0, y: 0, w: W, h: H };
+            return { x: 0, y: 0, w: W, h: H, matBottom: H };
         }
         var frame = 0;
         if (style === WOOD || style === BLACK_FRAME) {
@@ -86,7 +86,7 @@
         }
         // Moderno: passe-partout fino e uniforme; os outros, largo como num quadro de museu
         var margin = Math.min(mw, mh) * (style === MODERN ? 0.065 : 0.11);
-        return { x: mx + margin, y: my + margin, w: mw - 2 * margin, h: mh - 2 * margin };
+        return { x: mx + margin, y: my + margin, w: mw - 2 * margin, h: mh - 2 * margin, matBottom: my + mh };
     }
 
     function placeArt(img, box, style) {
@@ -136,6 +136,7 @@
         c.drawImage(img, r.x, r.y, r.w, r.h);
         c.restore();
         if (style !== FULL) bevel(c, r, style, matHex);
+        return { art: r, matBottom: box.matBottom, style: style };
     }
 
     /** Pintura abstrata gerada na hora (quando ainda não há obras e a TV está offline). */
@@ -166,12 +167,14 @@
         return cv;
     }
 
-    function loadBlob(blob) {
+    /** Abre a obra: do arquivo guardado (offline) ou direto da internet. */
+    function loadArt(a) {
         return new Promise(function (resolve, reject) {
-            var url = global.URL.createObjectURL(blob);
+            var url = a.blob ? global.URL.createObjectURL(a.blob) : a.url;
             var img = new global.Image();
-            img.onload = function () { global.URL.revokeObjectURL(url); resolve(img); };
-            img.onerror = function () { global.URL.revokeObjectURL(url); reject(new Error('imagem inválida')); };
+            var free = function () { if (a.blob) global.URL.revokeObjectURL(url); };
+            img.onload = function () { free(); resolve(img); };
+            img.onerror = function () { free(); reject(new Error('imagem inválida')); };
             img.src = url;
         });
     }
@@ -179,14 +182,46 @@
     // ---------------------------------------------------------------- controlador
 
     var el, layers, front = 0, timer = null, dimTimer = null, infoTimer = null, clockTimer = null;
-    var running = false, index = 0, token = 0, lastImg = null;
+    var running = false, index = 0, token = 0, lastImg = null, currentId = null;
+    var WEEKDAYS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+    var MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
     function $(id) { return doc.getElementById(id); }
     function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
     function updateClock() {
         var d = new Date();
-        $('artClock').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+        var day = WEEKDAYS[d.getDay()];
+        $('artClock').textContent = day.charAt(0).toUpperCase() + day.slice(1) + ', ' + d.getDate() + ' de ' + MONTHS[d.getMonth()]
+            + ' · ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    /**
+     * Com passe-partout, legenda e relógio ficam NO PAPEL, abaixo da obra, alinhados às bordas dela
+     * (como a etiqueta de um quadro na galeria). Em tela cheia, ficam nos cantos.
+     */
+    var lastLayout = null;
+
+    function placeLabels(lay) {
+        lastLayout = lay;
+        var info = $('artInfo'), clock = $('artClock');
+        var inMat = lay.style !== FULL;
+        el.classList.toggle('in-mat', inMat);
+        var props = ['left', 'right', 'top', 'bottom', 'maxWidth'];
+        props.forEach(function (p) { info.style[p] = ''; clock.style[p] = ''; });
+        if (!inMat) return;
+        var r = lay.art;
+        var center = r.y + r.h + (lay.matBottom - (r.y + r.h)) / 2;
+        var left = r.x, right = r.x + r.w;
+        // obra em pé (estreita): usa a largura do passe-partout para caber o texto
+        if (r.w < 1100) { left = Math.min(left, W * 0.1); right = Math.max(right, W * 0.9); }
+        info.style.left = left + 'px';
+        info.style.top = center + 'px';
+        info.style.bottom = 'auto';
+        info.style.maxWidth = Math.round((right - left) * 0.55) + 'px';
+        clock.style.right = (W - right) + 'px';
+        clock.style.top = center + 'px';
+        clock.style.bottom = 'auto';
     }
 
     function updateDim() {
@@ -208,25 +243,28 @@
     /** Redesenha a obra atual na hora (troca de estilo/cor), sem fade. */
     function redraw() {
         if (!lastImg) return;
-        render(layers[front], lastImg, Prefs.get('frameStyle'), Prefs.get('matColor'));
+        placeLabels(render(layers[front], lastImg, Prefs.get('frameStyle'), Prefs.get('matColor')));
         applyTextColor();
     }
 
-    function show(delta, absolute) {
+    /** Mostra a obra seguinte/anterior (delta) ou uma obra específica pelo id (escolhida na galeria). */
+    function show(delta, wantId) {
         clearTimeout(timer);
         var my = ++token;
-        index = absolute === undefined ? index + delta : absolute;
+        index += delta;
         return global.Store.listArt().then(function (all) {
+            // pelo id, não pela posição: obras novas podem chegar com a galeria aberta e mudar a ordem
+            if (wantId) for (var k = 0; k < all.length; k++) if (all[k].id === wantId) index = k;
             if (!all.length) return { img: generated(index, 1280, 720), gen: true, title: 'Estudo em cor nº ' + (Math.abs(index) % 97 + 1),
-                sub: 'Sanvtto TV · conecte à internet para receber obras de museus', i: index };
+                sub: 'Sem obras ainda — ' + global.Store.Diag.get('art'), i: index };
             // tenta a obra atual; se estiver corrompida, pula para a próxima
             var tries = 0;
             function attempt() {
                 var i = ((index + tries) % all.length + all.length) % all.length;
                 var a = all[i];
-                return loadBlob(a.blob).then(function (img) {
+                return loadArt(a).then(function (img) {
                     var sub = [a.artist, a.date].filter(Boolean).join(' · ');
-                    return { img: img, title: a.title, sub: sub, i: i };
+                    return { img: img, title: a.title, sub: sub, i: i, id: a.id };
                 }, function () {
                     if (++tries >= all.length) return { img: generated(index, 1280, 720), gen: true, title: 'Estudo em cor', sub: '', i: index };
                     return attempt();
@@ -236,10 +274,12 @@
         }).then(function (r) {
             if (!running || my !== token) return;
             index = r.i;
+            currentId = r.id || null;
             lastImg = r.img;
             Prefs.set('artIndex', index);
             var back = layers[1 - front];
-            render(back, r.img, Prefs.get('frameStyle'), Prefs.get('matColor'));
+            var lay = render(back, r.img, Prefs.get('frameStyle'), Prefs.get('matColor'));
+            placeLabels(lay);
             back.classList.add('on');
             layers[front].classList.remove('on');
             front = 1 - front;
@@ -274,7 +314,7 @@
 
     function markCurrent() {
         var row = $('galArt');
-        if (row) markSelected(row, index, 'data-index');
+        if (row) markSelected(row, currentId, 'data-art');
     }
 
     function openGallery() {
@@ -289,20 +329,21 @@
         return global.Store.listArt().then(function (all) {
             if (!galleryOpen) return;
             $('galCount').textContent = all.length ? all.length + (all.length === 1 ? ' obra' : ' obras') : 'Nenhuma obra baixada ainda';
-            all.forEach(function (a, i) {
-                artRow.appendChild(chip('', 'gal-thumb', function () { show(0, i); }, function (d) {
-                    d.setAttribute('data-index', i);
+            all.forEach(function (a) {
+                artRow.appendChild(chip('', 'gal-thumb', function () { show(0, a.id); }, function (d) {
+                    d.setAttribute('data-art', a.id);
                     d.setAttribute('data-title', a.title);
                     var img = doc.createElement('img');
-                    var url = global.URL.createObjectURL(a.thumb || a.blob);
-                    thumbUrls.push(url);
+                    var src = a.thumb || a.blob;
+                    var url = src ? global.URL.createObjectURL(src) : a.url;
+                    if (src) thumbUrls.push(url);
                     img.src = url;
                     img.onerror = function () { d.classList.add('broken'); };
                     d.appendChild(img);
                 }));
             });
             if (!all.length) artRow.appendChild(chip('Baixar obras agora', 'gal-chip', function () {
-                global.Store.refreshArt(true).then(function () { closeGallery(); show(0, 0); });
+                global.Store.refreshArt(true).then(function () { closeGallery(); index = 0; show(0); });
             }));
             STYLES.forEach(function (s) {
                 styleRow.appendChild(chip(s.name, 'gal-chip', function () {
@@ -389,6 +430,7 @@
         prev: function () { return show(-1); },
         info: flashInfo,
         openGallery: openGallery,
+        layout: function () { return lastLayout; },
         render: render,
         generated: generated,
         onClose: null,
