@@ -53,5 +53,5 @@ Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alte
 
 ```bash
 ./build-wgt.sh                      # gera release/SanvttoTV.wgt
-cd tests && npm install && npm test # 30 testes no Chromium com a API da TV simulada (prints em test-output/)
+cd tests && npm install && npm test # 33 testes no Chromium com a API da TV simulada (prints em test-output/)
 ```

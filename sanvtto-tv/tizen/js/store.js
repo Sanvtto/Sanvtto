@@ -192,7 +192,7 @@
         var url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'
             + '&generator=categorymembers&gcmtitle=Category:Featured_pictures_of_paintings&gcmtype=file&gcmlimit=60'
             + '&gcmsort=timestamp&gcmdir=' + (Math.random() < 0.5 ? 'asc' : 'desc')
-            + '&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=1686&iiextmetadatafilter=ObjectName|Artist|DateTimeOriginal';
+            + '&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=1920&iiextmetadatafilter=ObjectName|Artist|DateTimeOriginal';
         return fetchWithTimeout(url, 15000).then(function (r) { return r.json(); }).then(function (res) {
             var pages = res.query && res.query.pages ? res.query.pages : {};
             var list = [];
@@ -210,7 +210,9 @@
                     title: plain(md.ObjectName) || String(p.title || '').replace(/^File:/, '').replace(/\.[a-z]+$/i, ''),
                     artist: plain(md.Artist),
                     date: plain(md.DateTimeOriginal),
-                    url: ii.thumburl
+                    url: ii.thumburl,
+                    // o Wikimedia só serve miniaturas em tamanhos padrão; se 1920 falhar, tenta 1280
+                    alt: ii.thumburl.indexOf('/1920px-') > 0 ? ii.thumburl.replace('/1920px-', '/1280px-') : ''
                 });
             });
             return downloadAll(shuffle(list).slice(0, PER_REFRESH));
@@ -261,7 +263,10 @@
                     rec.blob = blob;
                     return makeThumb(blob).then(function (t) { if (t) rec.thumb = t; });
                 }).catch(function () {
-                    return probeImage(it.url).then(function (ok) { if (ok) rec.url = it.url; });
+                    return probeImage(it.url).then(function (ok) {
+                        if (ok) { rec.url = it.url; return; }
+                        if (it.alt) return probeImage(it.alt).then(function (ok2) { if (ok2) rec.url = it.alt; });
+                    });
                 }).then(function () {
                     if (!rec.blob && !rec.url) return;
                     return putArt(rec).then(function () { saved.push(rec); });
@@ -282,7 +287,7 @@
             existing.forEach(function (a) { known[a.id] = true; });
             var errors = [];
             // tenta um museu de cada vez até um funcionar
-            var sources = [['Art Institute', fetchArtInstitute], ['Wikimedia', fetchCommons], ['Met', fetchMet]];
+            var sources = [['Wikimedia', fetchCommons], ['Art Institute', fetchArtInstitute], ['Met', fetchMet]];
             var used = '';
             return sources.reduce(function (p, src) {
                 return p.then(function (got) {

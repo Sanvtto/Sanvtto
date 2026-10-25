@@ -39,6 +39,8 @@ async function newPage(opts = {}) {
     // museus simulados (ou offline)
     await page.route(/upload\.wikimedia\.org/, async (route) => {
         if (opts.offline) return route.abort('internetdisconnected');
+        // Wikimedia recusando tamanho fora do padrão
+        if (opts.wm1920Broken && route.request().url().includes('/1920px-')) return route.fulfill({ status: 429, body: 'tamanho não padrão' });
         if (opts.noCors && route.request().resourceType() === 'fetch') return route.abort('accessdenied');
         return route.fulfill({ contentType: 'image/jpeg', body: jpeg });
     });
@@ -49,13 +51,14 @@ async function newPage(opts = {}) {
         // TV que bloqueia baixar a imagem (CORS), mas deixa um <img> mostrar
         if (opts.noCors && route.request().resourceType() === 'fetch' && /iiif|upload\.wikimedia/.test(url)) return route.abort('accessdenied');
         if (url.includes('commons.wikimedia.org/w/api.php')) {
+            if (!opts.wikimedia) return route.fulfill({ status: 503, body: 'fora do ar' });
             return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ query: { pages: {
-                11: { pageid: 11, title: 'File:Paisagem.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a/paisagem.jpg', width: 1600, height: 1000,
+                11: { pageid: 11, title: 'File:Paisagem.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/thumb/a/paisagem.jpg/1920px-paisagem.jpg', width: 1600, height: 1000,
                     extmetadata: { ObjectName: { value: 'Paisagem com Rio' }, Artist: { value: '<a href="#">Fulano de Tal</a>' }, DateTimeOriginal: { value: '1882' } } }] },
                 12: { pageid: 12, title: 'File:Torre.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a/torre.jpg', width: 300, height: 1500 }] }
             } } }) });
         }
-        if (url.includes('upload.wikimedia.org')) return route.fulfill({ contentType: 'image/jpeg', body: jpeg });
+        if (url.includes('upload.wikimedia.org')) return route.fallback(); // tratado na rota própria acima
         if (url.includes('/artworks/search')) {
             return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
                 config: { iiif_url: 'https://www.artic.edu/iiif/2' },
@@ -74,6 +77,7 @@ async function newPage(opts = {}) {
         return route.fulfill({ status: 404, body: '' });
     });
     await page.goto(base + '/index.html');
+    if (opts.noWait) return page;
     await page.waitForFunction(() => document.querySelectorAll('#grid .card').length > 0 || !document.getElementById('safe').hidden || window.__APPS_FAIL);
     return page;
 }
@@ -293,7 +297,7 @@ async function noErrors(page) {
     await test('lista bloqueada e TV não deixa conferir: mostra a lista reserva inteira', async () => {
         const page = await newPage({ init: () => { window.__APPS_FAIL = true; window.__APPINFO_SECURITY = true; } });
         await page.waitForSelector('#grid .card');
-        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 7);
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 8);
         assert(/sem conferir/.test(await page.evaluate(() => window.Store.Diag.get('apps'))));
         await noErrors(page);
     });
@@ -317,7 +321,7 @@ async function noErrors(page) {
     });
 
     await test('Art Institute fora do ar: busca no Wikimedia', async () => {
-        const page = await newPage({ aicDown: true });
+        const page = await newPage({ aicDown: true, wikimedia: true });
         for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 1; i++) await page.waitForTimeout(100);
         await page.waitForTimeout(500);
         const list = await page.evaluate(async () => (await window.Store.listArt()).map((a) => [a.title, a.artist, a.date]));
@@ -343,6 +347,46 @@ async function noErrors(page) {
         const shown = await page.evaluate(() => [...document.querySelectorAll('.set-row')].map((r) => r.textContent));
         assert(shown.some((t) => t.startsWith('Apps') && /apps/.test(t)), 'linha Apps');
         assert(shown.some((t) => t.startsWith('Obras') && /falhou/.test(t)), 'linha Obras');
+        await noErrors(page);
+    });
+
+    await test('TV lenta (20 s para listar apps): mostra quando chegar e guarda para a próxima', async () => {
+        const page = await newPage({ clock: true, offline: true, init: () => { window.__APPS_DELAY = 20000; } , noWait: true });
+        await page.clock.runFor(8500);
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 0, 'ainda sem a lista');
+        assert(/aguardando/.test(await page.evaluate(() => window.Store.Diag.get('apps'))));
+        assert.strictEqual(await page.evaluate(() => localStorage.getItem('sv.favs')), null, 'não cria favoritos com a lista reserva');
+        await page.evaluate(() => window.SanvttoApp.openSettings()); // lista chega com os ajustes abertos
+        await page.clock.runFor(12000);
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 15, 'lista atrasada não apareceu');
+        assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'settings', 'não pode fechar os ajustes');
+        assert(await page.evaluate(() => window.Nav.current().classList.contains('set-row')), 'foco continua nos ajustes');
+        assert(/15 apps .*em 20 s/.test(await page.evaluate(() => window.Store.Diag.get('apps'))));
+        assert((await page.evaluate(() => JSON.parse(localStorage.getItem('sv.favs'))))[0].endsWith('Netflix'), 'favoritos padrão');
+        await key(page, K.BACK, { wait: 0 });
+        assert.strictEqual((await focusedInfo(page)).kind !== undefined, true);
+        // próxima abertura: aparece na hora, pela lista salva
+        await page.reload();
+        await page.clock.runFor(300);
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 15, 'lista salva não apareceu na hora');
+        await noErrors(page);
+    });
+
+    await test('lista reserva acha o app pelo código do Tizen também', async () => {
+        const page = await newPage({ init: () => {
+            window.__APPS_FAIL = true;
+            window.__INSTALLED_KNOWN = [{ id: '9Ur5IzDKqV.TizenYouTube', name: 'YouTube', iconPath: '' }];
+        } });
+        await page.waitForSelector('#grid .card');
+        assert.deepStrictEqual(await page.$$eval('#grid .card', (e) => e.map((x) => x.getAttribute('data-app'))), ['9Ur5IzDKqV.TizenYouTube']);
+        await noErrors(page);
+    });
+
+    await test('Wikimedia recusa 1920 px: usa 1280 px', async () => {
+        const page = await newPage({ wikimedia: true, wm1920Broken: true, noCors: true });
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 1; i++) await page.waitForTimeout(100);
+        const urls = await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.url));
+        assert.deepStrictEqual(urls, ['https://upload.wikimedia.org/thumb/a/paisagem.jpg/1280px-paisagem.jpg']);
         await noErrors(page);
     });
 

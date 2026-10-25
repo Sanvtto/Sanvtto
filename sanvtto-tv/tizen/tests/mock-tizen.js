@@ -23,7 +23,7 @@
                     setTimeout(function () { var e = new Error('acesso negado'); e.name = 'SecurityError'; err(e); }, 5);
                     return;
                 }
-                setTimeout(function () { ok(apps); }, 20);
+                setTimeout(function () { ok(apps); }, window.__APPS_DELAY || 20);
             },
             launch: function (id, ok, err) {
                 window.__launched.push(id);

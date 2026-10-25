@@ -73,12 +73,20 @@
 
     // ---------------------------------------------------------------- apps
 
+    function setApps(list) {
+        apps = list;
+        // favoritos padrão só com a lista verdadeira da TV (a reserva pode ter códigos diferentes)
+        if (!Prefs.has('favs') && list.length && (list.source !== 'reserva' || list.verified)) {
+            Prefs.setFavorites(global.Apps.defaultFavorites(list));
+        }
+        renderApps();
+    }
+
+    // a TV às vezes entrega a lista completa bem depois: atualiza a tela quando chegar
+    global.Apps.onUpdate = setApps;
+
     function loadApps() {
-        return global.Apps.load().then(function (list) {
-            apps = list;
-            if (!Prefs.has('favs') && list.length) Prefs.setFavorites(global.Apps.defaultFavorites(list));
-            renderApps();
-        });
+        return global.Apps.load().then(setApps);
     }
 
     function find(id) {
@@ -157,6 +165,7 @@
         });
         grid.appendChild(frag);
 
+        if (mode !== 'home') return; // lista chegou com ajustes/menu/quadro abertos: não rouba o foco
         var restore = curKey ? doc.querySelector('[data-kind="' + curKey.split(':')[0] + '"][data-app="' + cssEscape(curKey.slice(curKey.indexOf(':') + 1)) + '"]') : null;
         if (restore) Nav.focus(restore);
         else if (!cur || !doc.body.contains(cur) || !cur.getAttribute('data-app')) {
@@ -278,7 +287,7 @@
         ['h', 'Diagnóstico'],
         ['i', 'Apps', function () { return global.Store.Diag.get('apps'); }],
         ['i', 'Obras', function () { return global.Store.Diag.get('art'); }],
-        ['i', 'Versão', function () { return 'Sanvtto TV 1.1 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
+        ['i', 'Versão', function () { return 'Sanvtto TV 1.2 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
     ];
 
     function openSettings() {

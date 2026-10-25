@@ -20,16 +20,22 @@
         return PALETTE[Math.abs(h) % PALETTE.length];
     }
 
-    // Lista reserva: IDs oficiais dos apps mais comuns na Samsung, usada se a TV não entregar a lista completa.
+    // Lista reserva: apps comuns na Samsung. Cada um tem dois tipos de código (o da loja e o do Tizen),
+    // e cada TV usa um; o app tenta os dois.
     var KNOWN = [
-        ['3201907018807', 'Netflix'],
-        ['111299001912', 'YouTube'],
-        ['3201910019365', 'Prime Video'],
-        ['3201901017640', 'Disney+'],
-        ['3201606009684', 'Spotify'],
-        ['3201807016597', 'Apple TV'],
-        ['3201512006963', 'Plex']
+        ['Netflix', ['3201907018807', 'org.tizen.netflix-app', '11101200001']],
+        ['YouTube', ['111299001912', '9Ur5IzDKqV.TizenYouTube']],
+        ['Prime Video', ['3201910019365', 'org.tizen.ignition', '3201512006785']],
+        ['Disney+', ['3201901017640', 'MCmYXNxgcu.DisneyPlus']],
+        ['Globoplay', ['3201908019041']],
+        ['Spotify', ['3201606009684', 'rJeHak5zRg.Spotify']],
+        ['Apple TV', ['3201807016597']],
+        ['Plex', ['3201512006963', 'kIciSQlYEM.plex']]
     ];
+
+    var CACHE_KEY = 'sv.appsCache';
+    var FIRST_WAIT_MS = 8000;   // espera inicial antes de mostrar algo
+    var MAX_WAIT_MS = 90000;    // TVs lentas podem demorar bastante para listar tudo
 
     var Diag = global.Store.Diag, errText = global.Store.errText;
 
@@ -42,23 +48,73 @@
         return list;
     }
 
-    /** Resolve com [{id, name, icon, color}] em ordem alfabética. Nunca rejeita. */
+    function readCache() {
+        try {
+            var c = JSON.parse(global.localStorage.getItem(CACHE_KEY) || 'null');
+            return Array.isArray(c) ? c.filter(function (a) { return a && a.id && a.name; }) : [];
+        } catch (e) { return []; }
+    }
+
+    function writeCache(list) {
+        try { global.localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch (e) { /* sem espaço */ }
+    }
+
+    var pending = null; // pedido à TV em andamento (não dispara outro enquanto este não volta)
+
+    /**
+     * Resolve rápido com a melhor lista disponível: a última salva, ou (na primeira vez) espera a TV até 8 s
+     * e, se ela não responder, usa a lista reserva. Quando a TV finalmente entrega a lista completa — às vezes
+     * depois de bem mais de 8 s —, chama Apps.onUpdate(lista) e guarda para a próxima abertura.
+     * Cada lista vem com .source = 'tv' | 'cache' | 'reserva'. Nunca rejeita.
+     */
     function load() {
+        var cached = readCache();
         return new Promise(function (resolve) {
+            var answered = false;
+            function answer(list, source) {
+                if (answered) return false;
+                answered = true;
+                list.source = source;
+                resolve(list);
+                return true;
+            }
+            if (cached.length) answer(sortByName(cached), 'cache');
+            var firstTimer = setTimeout(function () {
+                if (answer(fallback('a TV ainda está listando os apps; aguardando'), 'reserva')) return;
+            }, FIRST_WAIT_MS);
+
+            requestFromTv().then(function (res) {
+                clearTimeout(firstTimer);
+                if (res.list.length) {
+                    writeCache(res.list);
+                    Diag.set('apps', res.list.length + ' apps (' + res.note + ')');
+                    res.list.source = 'tv';
+                    if (!answer(res.list, 'tv') && Apps.onUpdate) Apps.onUpdate(res.list);
+                } else if (!answered) {
+                    answer(fallback(res.note), 'reserva');
+                } else {
+                    Diag.set('apps', 'lista da TV falhou (' + res.note + ')' + (cached.length ? ' · usando a última lista salva' : ''));
+                }
+            });
+        });
+    }
+
+    /** Pede a lista à TV, esperando até 90 s. Resolve {list, note}. */
+    function requestFromTv() {
+        if (pending) return pending;
+        var started = Date.now();
+        pending = new Promise(function (resolve) {
             var t = global.tizen, finished = false, timer = null;
             function done(list, note) {
                 if (finished) return;
                 finished = true;
                 clearTimeout(timer);
-                if (list.length) {
-                    Diag.set('apps', list.length + ' apps (' + note + ')');
-                    resolve(list);
-                } else {
-                    resolve(fallback(note));
-                }
+                pending = null;
+                var secs = Math.round((Date.now() - started) / 1000);
+                resolve({ list: list, note: note + (secs >= 2 ? ', em ' + secs + ' s' : '') });
             }
             if (!t || !t.application || !t.application.getAppsInfo) { done([], 'API de apps indisponível'); return; }
-            timer = setTimeout(function () { done([], 'a TV demorou mais de 8 s'); }, 8000);
+            timer = setTimeout(function () { done([], 'a TV não respondeu em 90 s'); }, MAX_WAIT_MS);
             try {
                 t.application.getAppsInfo(function (raw) {
                     raw = raw || [];
@@ -71,24 +127,29 @@
                 done([], errText(e));
             }
         });
+        return pending;
     }
 
-    /** Monta a lista com os apps conhecidos que estão instalados (ou todos, se a TV não deixar conferir). */
+    /** Apps conhecidos que estão instalados (ou todos, se a TV não deixar conferir). */
     function fallback(reason) {
         var t = global.tizen, out = [], unverified = false;
         KNOWN.forEach(function (k) {
-            try {
-                var info = t.application.getAppInfo(k[0]);
-                out.push(entry(k[0], (info && info.name) || k[1], info && info.iconPath));
-            } catch (e) {
-                if (e && e.name === 'NotFoundError') return; // não instalado
-                unverified = true;
-                out.push(entry(k[0], k[1], ''));
+            var name = k[0], ids = k[1], hit = null, blocked = false;
+            for (var i = 0; i < ids.length && !hit; i++) {
+                try {
+                    var info = t.application.getAppInfo(ids[i]);
+                    if (info) hit = entry(ids[i], info.name || name, info.iconPath);
+                } catch (e) {
+                    if (!(e && e.name === 'NotFoundError')) blocked = true;
+                }
             }
+            if (hit) out.push(hit);
+            else if (blocked) { unverified = true; out.push(entry(ids[0], name, '')); }
         });
-        Diag.set('apps', 'lista da TV falhou (' + reason + ') · usando lista reserva com ' + out.length
-            + (unverified ? ' (sem conferir se estão instalados)' : ''));
-        return sortByName(out);
+        Diag.set('apps', reason + ' · lista reserva com ' + out.length + (unverified ? ' (sem conferir se estão instalados)' : ''));
+        out = sortByName(out);
+        out.verified = !unverified; // códigos confirmados pela TV: podem virar favoritos
+        return out;
     }
 
     function normalize(list, loose) {
@@ -124,5 +185,6 @@
         });
     }
 
-    global.Apps = { load: load, normalize: normalize, defaultFavorites: defaultFavorites, launch: launch };
+    var Apps = { load: load, normalize: normalize, defaultFavorites: defaultFavorites, launch: launch, onUpdate: null };
+    global.Apps = Apps;
 })(this);
