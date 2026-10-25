@@ -1,5 +1,5 @@
 build/
 test/target/
 keystore/
-tizen/node_modules/
+tizen/tests/node_modules/
 tizen/test-output/

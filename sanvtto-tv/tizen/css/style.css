@@ -1,0 +1,205 @@
+/* Sanvtto TV para Tizen. Tela fixa de 1920x1080 (a TV escala para 4K).
+   Animações só com transform/opacity: são as únicas que a GPU da TV faz liso. */
+
+:root {
+    --bg: #0b0b0d;
+    --text: #f5f5f7;
+    --sub: rgba(245, 245, 247, .6);
+    --surface: rgba(255, 255, 255, .2);
+    --scrim-top: rgba(0, 0, 0, .6);
+    --scrim-bottom: rgba(0, 0, 0, .9);
+    --ease: cubic-bezier(.2, 0, 0, 1);
+}
+
+body.light {
+    --bg: #ececf0;
+    --text: #1d1d1f;
+    --sub: rgba(29, 29, 31, .6);
+    --surface: rgba(255, 255, 255, .4);
+    --scrim-top: rgba(242, 242, 245, .55);
+    --scrim-bottom: rgba(242, 242, 245, .9);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    cursor: none;
+    user-select: none;
+}
+
+[hidden] { display: none !important; }
+
+#bg, #scrim { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+#bgCanvas { width: 100%; height: 100%; opacity: 0; transition: opacity .9s ease; }
+#bgCanvas.shown { opacity: 1; }
+#scrim { background: linear-gradient(var(--scrim-top), var(--scrim-bottom)); }
+
+#home { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; }
+#content {
+    padding: 60px 96px 120px;
+    transition: transform .45s var(--ease);
+    will-change: transform;
+}
+
+header { display: flex; align-items: center; justify-content: space-between; }
+#clock { font-size: 92px; font-weight: 200; letter-spacing: -1px; line-height: 1; }
+#date { font-size: 30px; color: var(--sub); margin-top: 12px; }
+.pills { display: flex; }
+
+.pill {
+    font-size: 30px;
+    font-weight: 500;
+    padding: 20px 40px;
+    margin-left: 24px;
+    border-radius: 44px;
+    background: var(--surface);
+    transition: transform .22s var(--ease), background-color .15s, color .15s;
+}
+.pill.focused { background: #fff; color: #1d1d1f; transform: scale(1.08); }
+
+h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px; }
+#favHint { font-size: 28px; color: var(--sub); margin: 16px 8px; }
+
+.row-viewport { margin: 0 -96px; padding: 16px 96px 0; overflow: hidden; }
+.row { display: flex; transition: transform .4s var(--ease); will-change: transform; }
+
+#grid .grid-row { display: flex; padding: 16px 8px 0; }
+
+.tile { flex: none; margin-right: 44px; }
+.tile:last-child { margin-right: 0; }
+.card {
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    transition: transform .22s var(--ease);
+    will-change: transform;
+}
+/* sombra pré-desenhada; só a opacidade anima (barato na TV) */
+.card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; right: 0; bottom: 0;
+    border-radius: 24px;
+    box-shadow: 0 28px 50px rgba(0, 0, 0, .55);
+    opacity: 0;
+    transition: opacity .22s;
+    z-index: -1;
+}
+.card img {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 46%;
+    transform: translate(-50%, -50%);
+}
+.card .initial {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 64px; font-weight: 600; color: rgba(255, 255, 255, .9);
+}
+.sheen {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    background: linear-gradient(135deg, rgba(255, 255, 255, .28), rgba(255, 255, 255, 0) 55%);
+    opacity: 0;
+    transition: opacity .22s;
+}
+.label {
+    font-size: 26px;
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 26px 4px 8px;
+    opacity: 0;
+    transform: translateY(0);
+    transition: opacity .2s, transform .2s var(--ease);
+}
+.tile.fav .label { font-size: 30px; padding-top: 32px; }
+
+.tile.focused { position: relative; z-index: 2; }
+.tile.focused .card { transform: scale(1.12); }
+.tile.fav.focused .card { transform: scale(1.1); }
+.tile.focused .card::before, .tile.focused .sheen { opacity: 1; }
+.tile.focused .label { opacity: 1; transform: translateY(8px); }
+
+/* modo seguro */
+#safe h1 { font-size: 44px; font-weight: 500; margin-top: 56px; }
+#safe p { font-size: 28px; color: var(--sub); margin: 12px 0 28px; }
+#safe .pill { display: inline-block; margin: 12px 16px 0 0; }
+#safeList { margin-top: 20px; }
+
+/* menu de app */
+.overlay {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: rgba(0, 0, 0, .55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+}
+.sheet {
+    width: 760px;
+    background: rgba(40, 40, 44, .97);
+    border-radius: 36px;
+    padding: 40px 32px;
+    color: #f5f5f7;
+}
+#menuTitle { font-size: 34px; font-weight: 600; padding: 0 24px 24px; }
+.menu-item {
+    font-size: 30px;
+    padding: 22px 24px;
+    border-radius: 18px;
+    transition: transform .18s var(--ease), background-color .12s, color .12s;
+}
+.menu-item.focused { background: #fff; color: #1d1d1f; transform: scale(1.03); }
+
+/* ajustes */
+.overlay.full { background: var(--bg); justify-content: flex-start; align-items: stretch; padding: 80px 128px; }
+.settings-left { width: 38%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.settings-title { font-size: 68px; font-weight: 300; }
+.settings-sub { font-size: 26px; color: var(--sub); margin-top: 14px; }
+.settings-right { width: 62%; overflow: hidden; position: relative; }
+#settingsList { transition: transform .35s var(--ease); padding: 8px 16px 80px; }
+.set-header { font-size: 22px; font-weight: 600; letter-spacing: 2px; color: var(--sub); padding: 40px 32px 14px; }
+.set-header:first-child { padding-top: 0; }
+.set-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 30px;
+    padding: 24px 32px;
+    margin-top: 4px;
+    border-radius: 22px;
+    transition: transform .18s var(--ease), background-color .12s, color .12s;
+}
+.set-row .value { color: var(--sub); font-size: 28px; margin-left: 32px; text-align: right; }
+.set-row.focused { background: #fff; color: #1d1d1f; transform: scale(1.03); }
+.set-row.focused .value { color: rgba(29, 29, 31, .6); }
+
+/* modo quadro */
+#art { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; z-index: 20; }
+.art-layer {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    opacity: 0;
+    transition: opacity 2.2s var(--ease);
+}
+.art-layer.on { opacity: 1; }
+#artInfo { position: absolute; left: 80px; bottom: 80px; opacity: 0; transition: opacity .8s; max-width: 1100px; }
+#artInfo.on { opacity: 1; }
+#artTitle { font-size: 36px; font-weight: 600; }
+#artSub { font-size: 26px; opacity: .75; margin-top: 10px; }
+#artInfo, #artClock { color: #fff; text-shadow: 0 0 12px rgba(0, 0, 0, .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#art.on-mat #artInfo, #art.on-mat #artClock { color: #1d1d1f; text-shadow: none; }
+#artClock { position: absolute; right: 80px; bottom: 80px; font-size: 32px; font-weight: 300; opacity: .75; }
+#artDim { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: #000; opacity: 0; transition: opacity 3s; pointer-events: none; }
+
+#toast {
+    position: absolute; left: 50%; bottom: 80px;
+    transform: translateX(-50%);
+    background: rgba(40, 40, 44, .95); color: #fff;
+    font-size: 28px; padding: 22px 40px; border-radius: 40px;
+    z-index: 50;
+}

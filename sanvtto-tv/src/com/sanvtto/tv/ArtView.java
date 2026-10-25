@@ -138,7 +138,7 @@ final class ArtView extends View {
         float pad = Ui.dp(getContext(), 40);
         if (infoAlpha > 0f && !title.isEmpty()) {
             int a = Math.round(infoAlpha * 255);
-            boolean onMat = frameStyle == Prefs.FRAME_WHITE_MAT;
+            boolean onMat = lightMat();
             titlePaint.setColor(onMat ? 0xFF1D1D1F : 0xFFFFFFFF);
             subPaint.setColor(onMat ? 0xB31D1D1F : 0xCCFFFFFF);
             titlePaint.setAlpha(a);
@@ -148,10 +148,15 @@ final class ArtView extends View {
             c.drawText(ellipsize(subtitle, subPaint, w * 0.6f), pad, h - pad, subPaint);
         }
         if (showClock) {
-            boolean onMat = frameStyle == Prefs.FRAME_WHITE_MAT;
+            boolean onMat = lightMat();
             clockPaint.setColor(onMat ? 0x991D1D1F : 0xB3FFFFFF);
             c.drawText(clockFmt.format(new Date()), w - pad, h - pad, clockPaint);
         }
+    }
+
+    /** Passe-partout claro (branco, madeira e moldura preta): texto escuro por cima. */
+    private boolean lightMat() {
+        return frameStyle != Prefs.FRAME_FULL && frameStyle != Prefs.FRAME_BLACK_MAT;
     }
 
     private RectF drawFrameAndMat(Canvas c, int w, int h) {

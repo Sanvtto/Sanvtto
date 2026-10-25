@@ -7,7 +7,7 @@ Tela inicial leve para **Android TV / Google TV** (APK de ~50 KB, sem biblioteca
 - **Modo quadro** (inspirado na Samsung The Frame): obras em domínio público do Art Institute of Chicago e do Met, guardadas para funcionar offline, mais as suas fotos. Tem passe-partout ou moldura e escurece aos poucos à noite. Abre sozinho depois de um tempo sem uso e também funciona como protetor de tela do sistema.
 - **Modo seguro**: se o app fechar sozinho 2 vezes, a tela inicial vira uma lista simples de apps, para a TV nunca ficar sem tela inicial.
 
-> ⚠️ Não funciona em TVs Samsung (Tizen) nem LG (webOS), porque elas não instalam APK.
+> 📺 **TV Samsung (Tizen)?** Use a versão em [`tizen/`](tizen/README.md). TVs LG (webOS) ainda não são suportadas.
 
 ## Compilar
 
