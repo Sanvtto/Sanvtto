@@ -418,3 +418,6 @@ body.glass-low { --accent-op: .5; }
 /* todos os cards no mesmo padrão: a cor do app quase sólida, com o vidro por cima */
 .card .tint { opacity: var(--tile-op); }
 body.glass-low .card .tint { opacity: 1; }
+
+/* a legenda entra e sai junto com a obra (o fade da obra é de 2,2 s) */
+#artInfo { transition: opacity 1.4s ease; }

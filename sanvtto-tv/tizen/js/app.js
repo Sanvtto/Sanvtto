@@ -436,7 +436,7 @@
         ['c', 'Abrir sozinho após', 'idleMin', ['Nunca', '2 min', '5 min', '10 min', '15 min', '30 min'], [0, 2, 5, 10, 15, 30]],
         ['c', 'Estilo', 'frameStyle', Art.STYLES.map(function (s) { return s.name; }), Art.STYLES.map(function (s) { return s.id; })],
         ['c', 'Cor do passe-partout', 'matColor', Art.MATS.map(function (m) { return m.name; }), Art.MATS.map(function (m) { return m.id; })],
-        ['c', 'Trocar obra a cada', 'artSeconds', ['10 segundos', '30 segundos', '1 minuto', '5 minutos', '15 minutos', '1 hora'], [10, 30, 60, 300, 900, 3600]],
+        ['c', 'Trocar obra a cada', 'artSeconds', ['10 segundos', '15 segundos', '30 segundos', '1 minuto', '5 minutos', '15 minutos', '1 hora'], [10, 15, 30, 60, 300, 900, 3600]],
         ['t', 'Escurecer à noite', 'nightDim'],
         ['t', 'Mostrar relógio', 'artClock'],
         ['a', 'Baixar novas obras agora', function () {
@@ -455,7 +455,7 @@
         ['h', 'Diagnóstico'],
         ['i', 'Apps', function () { return global.Store.Diag.get('apps'); }],
         ['i', 'Obras', function () { return global.Store.Diag.get('art'); }],
-        ['i', 'Versão', function () { return 'Sanvtto TV 1.5 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
+        ['i', 'Versão', function () { return 'Sanvtto TV 1.6 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
     ];
 
     function openSettings() {

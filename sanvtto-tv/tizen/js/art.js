@@ -228,12 +228,30 @@
         $('artDim').style.opacity = Prefs.get('nightDim') ? global.Theme.nightDim(new Date()) : 0;
     }
 
-    function flashInfo() {
-        var info = $('artInfo');
-        info.classList.add('on');
-        clearTimeout(infoTimer);
-        infoTimer = setTimeout(function () { info.classList.remove('on'); }, 7000);
+    var infoHidden = false; // OK no controle esconde/mostra a legenda
+
+    /** A legenda acompanha a obra: aparece com ela e só sai quando ela sai. */
+    function showInfo(on) {
+        $('artInfo').classList.toggle('on', on && !infoHidden && !galleryOpen);
     }
+
+    function toggleInfo() {
+        infoHidden = !infoHidden;
+        showInfo(true);
+    }
+
+    /** "1889", "c. 1885–1890", "1 de março de 1904" → primeiro ano com 4 dígitos. */
+    function yearOf(s) {
+        var m = String(s || '').match(/\b(1[0-9]{3}|20[0-9]{2})\b/);
+        return m ? m[1] : '';
+    }
+
+    /** Legenda curta: título, ano e país (quando o museu informa). */
+    function caption(a) {
+        return [a.year || yearOf(a.date), a.country || ''].filter(Boolean).join(' · ');
+    }
+
+    function isLandscape(w, h) { return w >= h * 1.15; }
 
     function applyTextColor() {
         var style = Prefs.get('frameStyle');
@@ -263,9 +281,13 @@
                 var i = ((index + tries) % all.length + all.length) % all.length;
                 var a = all[i];
                 return loadArt(a).then(function (img) {
-                    var sub = [a.artist, a.date].filter(Boolean).join(' · ');
-                    return { img: img, title: a.title, sub: sub, i: i, id: a.id };
-                }, function () {
+                    // obra em pé (guardada por versões antigas): sai do acervo e pula para a próxima
+                    if (!isLandscape(img.width, img.height)) {
+                        global.Store.deleteArt(a.id);
+                        throw new Error('obra em pé');
+                    }
+                    return { img: img, title: a.title, sub: caption(a), i: i, id: a.id };
+                }).catch(function () {
                     if (++tries >= all.length) return { img: generated(index, 1280, 720), gen: true, title: 'Estudo em cor', sub: '', i: index };
                     return attempt();
                 });
@@ -279,14 +301,20 @@
             Prefs.set('artIndex', index);
             var back = layers[1 - front];
             var lay = render(back, r.img, Prefs.get('frameStyle'), Prefs.get('matColor'));
-            placeLabels(lay);
             back.classList.add('on');
             layers[front].classList.remove('on');
             front = 1 - front;
-            applyTextColor();
-            $('artTitle').textContent = r.title;
-            $('artSub').textContent = r.sub;
-            if (!galleryOpen) flashInfo();
+            // a legenda sai junto com a obra antiga e volta junto com a nova
+            showInfo(false);
+            clearTimeout(infoTimer);
+            infoTimer = setTimeout(function () {
+                if (!running || my !== token) return;
+                placeLabels(lay);
+                applyTextColor();
+                $('artTitle').textContent = r.title;
+                $('artSub').textContent = r.sub;
+                showInfo(true);
+            }, 700);
             markCurrent();
             timer = setTimeout(function () { show(1); }, Math.max(10, Prefs.get('artSeconds')) * 1000);
         }).catch(function () {
@@ -376,6 +404,7 @@
     function closeGallery() {
         galleryOpen = false;
         $('gallery').hidden = true;
+        showInfo(true);
         thumbUrls.forEach(function (u) { global.URL.revokeObjectURL(u); });
         thumbUrls = [];
         $('galArt').innerHTML = '';
@@ -428,7 +457,7 @@
         },
         next: function () { return show(1); },
         prev: function () { return show(-1); },
-        info: flashInfo,
+        info: toggleInfo,
         openGallery: openGallery,
         layout: function () { return lastLayout; },
         render: render,
@@ -453,7 +482,7 @@
             if (code === K.RIGHT || code === K.NEXT || code === K.CH_UP) { show(1); return true; }
             if (code === K.LEFT || code === K.PREV || code === K.CH_DOWN) { show(-1); return true; }
             if (code === K.DOWN) { openGallery(); return true; }
-            if (code === K.ENTER || code === K.INFO || code === K.UP) { flashInfo(); return true; }
+            if (code === K.ENTER || code === K.INFO || code === K.UP) { toggleInfo(); return true; }
             Art.close();
             return true;
         }

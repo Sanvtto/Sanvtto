@@ -17,7 +17,7 @@ Versão para TVs Samsung com Tizen, feita para a **Crystal UHD BU8000** (Tizen 6
   Se ainda sobrar algum app que você não quer: segure OK nele → **Ocultar este app**. Para trazer de volta: Ajustes → **Mostrar apps ocultos**.
 - **Entradas HDMI** (PS4, Xbox...) aparecem como atalhos: segure OK → **Renomear** para escolher o aparelho (nome e ícone).
   A HDMI 1 já vem como PS4 e entra nos favoritos. Ícones de YouTube, Prime Video, Netflix etc. vêm do [Simple Icons](https://simpleicons.org) (CC0).
-- O quadro guarda pelo menos 20 obras e troca a cada 10 segundos (ajustável em Ajustes → Trocar obra a cada).
+- O quadro guarda pelo menos 20 obras (só quadros deitados, formato paisagem) e troca a cada 15 segundos (ajustável em Ajustes → Trocar obra a cada).
 
 ## O que a Samsung permite e o que não permite
 
@@ -53,12 +53,12 @@ Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alte
 ## Teclas
 - **Setas / OK**: navegar e abrir. **Segurar OK**: menu do app (favoritar, mover, remover).
 - **Voltar**: fecha menus. Na tela inicial, só volta ao topo, sem nunca fechar o app.
-- No **quadro**: ← → trocam a obra, OK mostra título e autor, **↓ abre a galeria** e Voltar sai.
+- No **quadro**: ← → trocam a obra, OK esconde/mostra a legenda (título · ano · país), **↓ abre a galeria** e Voltar sai.
 - Na **galeria**: OK escolhe, ↑ na primeira fileira fecha.
 
 ## Desenvolvimento
 
 ```bash
 ./build-wgt.sh                      # gera release/SanvttoTV.wgt
-cd tests && npm install && npm test # 41 testes no Chromium com a API da TV simulada (prints em test-output/)
+cd tests && npm install && npm test # 43 testes no Chromium com a API da TV simulada (prints em test-output/)
 ```

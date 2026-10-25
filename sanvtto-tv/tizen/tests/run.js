@@ -70,7 +70,8 @@ async function newPage(opts = {}) {
             return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
                 config: { iiif_url: 'https://www.artic.edu/iiif/2' },
                 data: [
-                    { id: 1, title: 'A Tarde no Campo', image_id: 'img1', artist_title: 'Pintor Um', date_display: '1890', thumbnail: { width: 1600, height: 1000 } },
+                    { id: 1, title: 'A Tarde no Campo', image_id: 'img1', artist_title: 'Pintor Um', date_display: 'c. 1890–1892', place_of_origin: 'França', thumbnail: { width: 1600, height: 1000 } },
+                    { id: 6, title: 'Marinha ao Entardecer', image_id: 'img6', artist_title: 'Pintor Seis', date_display: '1875', thumbnail: { width: 1500, height: 1000 } },
                     { id: 2, title: 'Retrato', image_id: 'img2', artist_title: 'Pintora Dois', date_display: '1875', thumbnail: { width: 800, height: 1100 } },
                     { id: 3, title: 'Muito Estreita', image_id: 'img3', artist_title: 'X', date_display: '', thumbnail: { width: 200, height: 1000 } },
                     { id: 4, title: 'Arquivo Quebrado', image_id: 'broken', artist_title: 'Y', date_display: '', thumbnail: { width: 1000, height: 800 } },
@@ -472,7 +473,7 @@ async function noErrors(page) {
         await page.evaluate(() => { localStorage.setItem('sv.artIndex', 0); window.SanvttoApp.openArt(); });
         await page.waitForTimeout(2600);
         const title = await page.textContent('#artTitle');
-        assert(['A Tarde no Campo', 'Retrato'].includes(title), 'título: ' + title);
+        assert(['A Tarde no Campo', 'Marinha ao Entardecer'].includes(title), 'título: ' + title);
         await key(page, K.D);
         await page.waitForSelector('#galArt .gal-thumb img');
         await page.waitForTimeout(300);
@@ -543,7 +544,7 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
-    await test('busca pelo menos 20 obras e troca a cada 10 segundos', async () => {
+    await test('busca pelo menos 20 obras e troca a cada 15 segundos', async () => {
         const page = await newPage({ wikimedia: true, wikimediaMany: true, noCors: true });
         for (let i = 0; i < 150 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 20; i++) await page.waitForTimeout(100);
         const n = await page.evaluate(async () => (await window.Store.listArt()).length);
@@ -553,10 +554,10 @@ async function noErrors(page) {
         await page.waitForTimeout(2500);
         const seen = new Set([await page.textContent('#artTitle')]);
         for (let i = 0; i < 2; i++) {
-            await page.waitForTimeout(10500);
+            await page.waitForTimeout(15800);
             seen.add(await page.textContent('#artTitle'));
         }
-        assert(seen.size >= 3, 'não trocou a cada 10 s: ' + [...seen].join(' / '));
+        assert(seen.size >= 3, 'não trocou a cada 15 s: ' + [...seen].join(' / '));
         await noErrors(page);
     });
 
@@ -593,7 +594,7 @@ async function noErrors(page) {
         assert.strictEqual(await page.evaluate(() => window.__screenSaver.slice(-1)[0]), 0, 'proteção de tela da TV deve ser desligada');
         await page.screenshot({ path: path.join(OUT, 'quadro-offline.png') });
         const t1 = await page.textContent('#artTitle');
-        await key(page, K.R, { wait: 300 });
+        await key(page, K.R, { wait: 1200 }); // a legenda chega junto com a nova obra
         const t2 = await page.textContent('#artTitle');
         assert.notStrictEqual(t1, t2, 'seta não trocou');
         await key(page, K.L, { wait: 300 });
@@ -609,7 +610,7 @@ async function noErrors(page) {
         for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 2; i++) await page.waitForTimeout(100);
         await page.waitForTimeout(500); // garante que nada mais chega (estreita/quebrada)
         const titles = (await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.title))).sort();
-        assert.deepStrictEqual(titles, ['A Tarde no Campo', 'Retrato']);
+        assert.deepStrictEqual(titles, ['A Tarde no Campo', 'Marinha ao Entardecer'], 'o retrato (em pé) não pode entrar');
         for (const style of [0, 1, 2, 3, 4]) {
             await page.evaluate((s) => { localStorage.setItem('sv.frameStyle', s); localStorage.setItem('sv.artIndex', 0); }, style);
             await page.evaluate(() => window.SanvttoApp.openArt());
@@ -699,7 +700,7 @@ async function noErrors(page) {
                 await key(page, K.OK, { wait: 0 });
                 await page.clock.runFor(300);
                 await key(page, K.BACK, { wait: 0 }); // fecha a galeria
-                await key(page, K.OK, { wait: 0 });   // mostra a legenda
+                await page.clock.runFor(800);          // a legenda entra logo depois da obra
                 await page.waitForTimeout(900);
                 const r = await page.evaluate(() => {
                     const lay = window.Art.layout();
@@ -723,6 +724,60 @@ async function noErrors(page) {
                 await key(page, K.BACK, { wait: 0 }); // sai do quadro
             }
         }
+        await noErrors(page);
+    });
+
+    await test('legenda: só título, ano e país, e fica enquanto a obra fica', async () => {
+        const page = await newPage({ clock: true, clockTime: new Date('2026-03-15T14:00:00-03:00') });
+        for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 2; i++) await page.clock.runFor(100);
+        const id = await page.evaluate(async () => (await window.Store.listArt()).find((a) => a.title === 'A Tarde no Campo').id);
+        await page.evaluate(() => window.SanvttoApp.openArt());
+        await key(page, K.D, { wait: 0 });
+        await page.waitForSelector('#galArt .gal-thumb');
+        await page.evaluate((v) => window.Nav.focus(document.querySelector('#galArt [data-art="' + v + '"]')), id);
+        await key(page, K.OK, { wait: 0 });
+        await key(page, K.BACK, { wait: 0 });
+        await page.clock.runFor(800);
+        await page.waitForFunction(() => document.getElementById('artTitle').textContent === 'A Tarde no Campo');
+        assert.strictEqual(await page.textContent('#artSub'), '1890 · França', 'sem artista, só ano e país');
+        const on = () => page.evaluate(() => document.getElementById('artInfo').classList.contains('on'));
+        assert(await on(), 'legenda deveria aparecer com a obra');
+        await page.clock.runFor(12000); // 12 s depois: a obra continua, a legenda também
+        assert(await on(), 'legenda sumiu antes da obra');
+        // aos 15 s troca: a legenda some junto com a obra antiga...
+        await page.clock.runFor(3500);
+        await page.waitForFunction(() => !document.getElementById('artInfo').classList.contains('on'), null, { timeout: 5000 })
+            .catch(() => { throw new Error('legenda deveria sair junto com a obra'); });
+        // ...e volta com a nova
+        await page.clock.runFor(800);
+        await page.waitForFunction(() => document.getElementById('artTitle').textContent === 'Marinha ao Entardecer');
+        assert(await on(), 'legenda deveria voltar com a nova obra');
+        assert.strictEqual(await page.textContent('#artSub'), '1875');
+        // OK esconde e mostra
+        await key(page, K.OK, { wait: 0 });
+        assert(!(await on()), 'OK deveria esconder');
+        await key(page, K.OK, { wait: 0 });
+        assert(await on(), 'OK deveria mostrar de novo');
+        await noErrors(page);
+    });
+
+    await test('obra em pé guardada por versão antiga é pulada e apagada', async () => {
+        const page = await newPage({ offline: true });
+        await page.evaluate(async () => {
+            const mk = (w, h, color) => new Promise((res) => {
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, w, h);
+                c.toBlob(res, 'image/jpeg', 0.9);
+            });
+            await window.Store.putArt({ id: 'em-pe', title: 'Em Pé', blob: await mk(600, 1000, '#a33'), added: 3 });
+            await window.Store.putArt({ id: 'deitada', title: 'Deitada', blob: await mk(1600, 900, '#3a3'), added: 2 });
+            localStorage.setItem('sv.artIndex', 0);
+        });
+        await page.evaluate(() => window.SanvttoApp.openArt());
+        await page.waitForFunction(() => document.getElementById('artTitle').textContent === 'Deitada', null, { timeout: 5000 });
+        await page.waitForTimeout(300);
+        const ids = await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.id));
+        assert.deepStrictEqual(ids, ['deitada'], 'a obra em pé deveria ser apagada');
         await noErrors(page);
     });
 
