@@ -355,6 +355,51 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
+    await test('fundo muda para a cor do app em foco, com todos os ícones no mesmo padrão', async () => {
+        const page = await newPage();
+        const accent = () => page.evaluate(() => {
+            const on = document.querySelector('.accent-layer.on');
+            return on ? on.style.background : '';
+        });
+        const focusApp = async (id) => {
+            await page.evaluate((v) => window.Nav.focus(document.querySelector('#grid [data-app="' + v + '"]')), id);
+            await page.waitForTimeout(200);
+        };
+        await focusApp('app1.YouTube');
+        assert(/rgb\(230, 33, 23\)/.test(await accent()), 'YouTube: ' + await accent());
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: path.join(OUT, 'fundo-youtube.png') });
+        await focusApp('app2.PrimeVideo');
+        assert(/rgb\(0, 168, 225\)/.test(await accent()), 'Prime: ' + await accent());
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: path.join(OUT, 'fundo-prime.png') });
+        // app sem ícone de marca: a cor sai do ícone da TV (Globoplay é vermelho #FB0234 no teste)
+        await focusApp('app4.Globoplay');
+        const gp = await accent();
+        const m = gp.match(/rgb\((\d+), (\d+), (\d+)\)/);
+        assert(m && +m[1] > 200 && +m[2] < 60 && +m[3] < 90, 'Globoplay: ' + gp);
+        const tint = await page.$eval('#grid [data-app="app4.Globoplay"] .tint', (e) => getComputedStyle(e).backgroundColor);
+        assert(/rgb\(2[0-9]{2}, [0-5]?\d, /.test(tint), 'card na cor do ícone: ' + tint);
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: path.join(OUT, 'fundo-globoplay.png') });
+        // botões de cima: fundo volta ao normal
+        await page.evaluate(() => window.Nav.focus(document.getElementById('btnSettings')));
+        await page.waitForTimeout(200);
+        assert.strictEqual(await page.$$eval('.accent-layer.on', (e) => e.length), 0);
+        // passar rápido por vários apps não pisca: só a cor do último fica
+        await page.evaluate(() => {
+            const cards = [...document.querySelectorAll('#grid .card')].slice(0, 10);
+            cards.forEach((c) => window.Nav.focus(c));
+        });
+        await page.waitForTimeout(200);
+        assert.strictEqual(await page.$$eval('.accent-layer.on', (e) => e.length), 1);
+        // a cor tirada do ícone fica guardada para a próxima vez
+        await page.waitForTimeout(600);
+        const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sv.accents') || '{}'));
+        assert(saved['app4.Globoplay'], 'cor não foi guardada: ' + JSON.stringify(saved));
+        await noErrors(page);
+    });
+
     await test('YouTube e Prime Video com ícone próprio (a TV manda ícone genérico)', async () => {
         const page = await newPage();
         const yt = await page.$('#grid [data-app="app1.YouTube"] .brand svg path');

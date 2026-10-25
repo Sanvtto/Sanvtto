@@ -58,7 +58,11 @@
 
     function entry(id, name, icon) {
         name = String(name).trim();
-        return { id: id, name: name, icon: iconUrl(icon), color: colorFor(name), brand: global.Brands.forApp(name, !!icon) };
+        var brand = global.Brands.forApp(name, !!icon);
+        // cor de destaque: a oficial da marca, ou a que já foi tirada do ícone e guardada
+        var saved = global.Store.Prefs.get('accents') || {};
+        return { id: id, name: name, icon: iconUrl(icon), color: colorFor(name), brand: brand,
+            accent: (brand && brand.accent) || saved[id] || '' };
     }
 
     // ------------------------------------------------------------------ entradas HDMI (PS4, Xbox...)
@@ -82,7 +86,7 @@
         return {
             id: 'source:HDMI:' + num, input: num, connected: connected,
             name: label || 'HDMI ' + num, icon: '', color: '#2C2C34',
-            brand: global.Brands.forInput(kind)
+            brand: global.Brands.forInput(kind), accent: global.Brands.forInput(kind).accent
         };
     }
 

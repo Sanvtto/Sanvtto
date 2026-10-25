@@ -401,3 +401,20 @@ h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px
 }
 .tile.fav .card .brand-text { font-size: 48px; }
 #inputRow { padding: 16px 8px 0; display: flex; }
+
+/* fundo na cor do app em foco (efeito Apple TV) */
+#accent { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.accent-layer {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    opacity: 0;
+    transition: opacity .6s ease;
+    will-change: opacity;
+}
+.accent-layer.on { opacity: var(--accent-op); }
+:root { --accent-op: .85; --tile-op: .92; }
+body.light { --accent-op: .55; }
+body.glass-low { --accent-op: .5; }
+
+/* todos os cards no mesmo padrão: a cor do app quase sólida, com o vidro por cima */
+.card .tint { opacity: var(--tile-op); }
+body.glass-low .card .tint { opacity: 1; }

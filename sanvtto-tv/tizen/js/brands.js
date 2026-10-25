@@ -30,18 +30,18 @@
      * quando a TV não manda ícone nenhum.
      */
     var BRANDS = [
-        { re: /^youtube kids/i, path: 'youtubekids', bg: '#ffffff', fg: '#FF0000', force: true },
-        { re: /^youtube/i, path: 'youtube', bg: '#ffffff', fg: '#FF0000', force: true },
-        { re: /^(prime video|amazon prime)/i, text: 'prime video', bg: '#00A8E1', fg: '#ffffff', force: true },
-        { re: /^netflix/i, path: 'netflix', bg: '#000000', fg: '#E50914', force: true },
-        { re: /^spotify/i, path: 'spotify', bg: '#121212', fg: '#1ED760', force: true },
-        { re: /^deezer/i, path: 'deezer', bg: '#121216', fg: '#A238FF', force: true },
-        { re: /^plex/i, path: 'plex', bg: '#1F1F1F', fg: '#EBAF00' },
-        { re: /^crunchyroll/i, path: 'crunchyroll', bg: '#FF5E00', fg: '#ffffff' },
-        { re: /^paramount/i, path: 'paramountplus', bg: '#0064FF', fg: '#ffffff' },
-        { re: /^apple tv/i, path: 'appletv', bg: '#000000', fg: '#ffffff' },
-        { re: /^twitch/i, path: 'twitch', bg: '#9146FF', fg: '#ffffff' },
-        { re: /^(hbo ?max|max$)/i, path: 'hbomax', bg: '#0A1238', fg: '#ffffff' }
+        { re: /^youtube kids/i, path: 'youtubekids', bg: '#ffffff', fg: '#FF0000', force: true, accent: '#E62117' },
+        { re: /^youtube/i, path: 'youtube', bg: '#ffffff', fg: '#FF0000', force: true, accent: '#E62117' },
+        { re: /^(prime video|amazon prime)/i, text: 'prime video', bg: '#00A8E1', fg: '#ffffff', force: true, accent: '#00A8E1' },
+        { re: /^netflix/i, path: 'netflix', bg: '#000000', fg: '#E50914', force: true, accent: '#B20710' },
+        { re: /^spotify/i, path: 'spotify', bg: '#121212', fg: '#1ED760', force: true, accent: '#1DB954' },
+        { re: /^deezer/i, path: 'deezer', bg: '#121216', fg: '#A238FF', force: true, accent: '#A238FF' },
+        { re: /^plex/i, path: 'plex', bg: '#1F1F1F', fg: '#EBAF00', accent: '#C98F00' },
+        { re: /^crunchyroll/i, path: 'crunchyroll', bg: '#FF5E00', fg: '#ffffff', accent: '#FF5E00' },
+        { re: /^paramount/i, path: 'paramountplus', bg: '#0064FF', fg: '#ffffff', accent: '#0064FF' },
+        { re: /^apple tv/i, path: 'appletv', bg: '#000000', fg: '#ffffff', accent: '#48484A' },
+        { re: /^twitch/i, path: 'twitch', bg: '#9146FF', fg: '#ffffff', accent: '#9146FF' },
+        { re: /^(hbo ?max|max$)/i, path: 'hbomax', bg: '#0A1238', fg: '#ffffff', accent: '#2B3BD9' }
     ];
 
     /** Visual de marca para um app (ou null). */
@@ -49,7 +49,7 @@
         for (var i = 0; i < BRANDS.length; i++) {
             var b = BRANDS[i];
             if (b.re.test(name) && (b.force || !hasIcon)) {
-                return { path: b.path ? PATHS[b.path] : '', text: b.text || '', bg: b.bg, fg: b.fg };
+                return { path: b.path ? PATHS[b.path] : '', text: b.text || '', bg: b.bg, fg: b.fg, accent: b.accent };
             }
         }
         return null;
@@ -57,9 +57,9 @@
 
     /** Visual para uma entrada HDMI, pelo tipo de aparelho escolhido. */
     function forInput(kind) {
-        if (kind === 'playstation') return { path: PATHS.playstation, bg: '#003791', fg: '#ffffff' };
-        if (kind === 'appletv') return { path: PATHS.appletv, bg: '#000000', fg: '#ffffff' };
-        return { path: GLYPHS[kind] || GLYPHS.hdmi, bg: '#2C2C34', fg: '#ffffff' };
+        if (kind === 'playstation') return { path: PATHS.playstation, bg: '#003791', fg: '#ffffff', accent: '#0050C8' };
+        if (kind === 'appletv') return { path: PATHS.appletv, bg: '#000000', fg: '#ffffff', accent: '#48484A' };
+        return { path: GLYPHS[kind] || GLYPHS.hdmi, bg: '#2C2C34', fg: '#ffffff', accent: '#4A4A58' };
     }
 
     /** Monta o desenho (SVG ou texto) dentro de um card. */
