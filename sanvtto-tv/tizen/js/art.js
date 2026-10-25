@@ -288,7 +288,7 @@
             $('artSub').textContent = r.sub;
             if (!galleryOpen) flashInfo();
             markCurrent();
-            timer = setTimeout(function () { show(1); }, Math.max(1, Prefs.get('artInterval')) * 60000);
+            timer = setTimeout(function () { show(1); }, Math.max(10, Prefs.get('artSeconds')) * 1000);
         }).catch(function () {
             if (running) timer = setTimeout(function () { show(1); }, 60000);
         });

@@ -5,8 +5,11 @@
     // Ordem dos favoritos na primeira abertura (os nomes variam por região, então comparamos o nome).
     var DEFAULT_FAVORITES = ['netflix', 'youtube', 'prime video', 'disney', 'globoplay', 'max', 'spotify', 'plex', 'apple tv'];
 
-    // Apps internos do sistema que não fazem sentido na grade.
-    var HIDDEN = /^(org\.tizen\.|com\.samsung\.tv\.(?!store))|\.(service|widget)$/i;
+    // Apps internos do sistema (Smart Hub, serviços, teclados...) que não fazem sentido na grade.
+    // Mantém os da Samsung que são apps de verdade: navegador, Netflix, Prime Video, Globoplay, TV Plus.
+    // (filtro baseado no do projeto Free My TV: github.com/simbasjungles/free-my-tv)
+    var HIDDEN = new RegExp('^(org\\.volt\\.|org\\.tizen\\.(?!browser$|netflix|primevideo$|globoplay)'
+        + '|com\\.samsung\\.(?!tv\\.tvplus|tvplus))|\\.(service|widget|ime|keyboard)$', 'i');
 
     var PALETTE = ['#3a3a3c', '#2c4a6b', '#5a3a6b', '#6b3a3a', '#3a6b4a', '#6b5a2c', '#2c5a6b', '#4a3a6b'];
 
@@ -23,15 +26,29 @@
     // Lista reserva: apps comuns na Samsung. Cada um tem dois tipos de código (o da loja e o do Tizen),
     // e cada TV usa um; o app tenta os dois.
     var KNOWN = [
-        ['Netflix', ['3201907018807', 'org.tizen.netflix-app', '11101200001']],
-        ['YouTube', ['111299001912', '9Ur5IzDKqV.TizenYouTube']],
-        ['Prime Video', ['3201910019365', 'org.tizen.ignition', '3201512006785']],
-        ['Disney+', ['3201901017640', 'MCmYXNxgcu.DisneyPlus']],
-        ['Globoplay', ['3201908019041']],
-        ['Spotify', ['3201606009684', 'rJeHak5zRg.Spotify']],
+        ['Netflix', ['RN1MCdNq8t.Netflix', 'org.tizen.netflix-app', '3201907018807']],
+        ['YouTube', ['9Ur5IzDKqV.TizenYouTube', '111299001912']],
+        ['Prime Video', ['evKhCgZelL.AmazonIgnitionLauncher2', 'org.tizen.primevideo', '3201910019365']],
+        ['Disney+', ['MCmYXNxgcu.DisneyPlus', '3201901017640']],
+        ['HBO Max', ['NvZ26VG9Yw.HBOGOLAG']],
+        ['Globoplay', ['org.tizen.globoplayapp', '3201908019041']],
+        ['Spotify', ['rJeHak5zRg.Spotify', '3201606009684']],
+        ['Deezer', ['cexr1qp97S.Deezer']],
+        ['YouTube Kids', ['5SLwh7m3En.TizenYouTubeKids']],
         ['Apple TV', ['3201807016597']],
-        ['Plex', ['3201512006963', 'kIciSQlYEM.plex']]
+        ['Plex', ['kIciSQlYEM.plex', '3201512006963']]
     ];
+
+    /** Ícone local do Tizen precisa de file:// para abrir dentro do app. */
+    function iconUrl(p) {
+        if (!p) return '';
+        return p.charAt(0) === '/' ? 'file://' + p : p;
+    }
+
+    function hiddenByUser() {
+        var h = global.Store.Prefs.get('hiddenApps');
+        return Array.isArray(h) ? h : [];
+    }
 
     var CACHE_KEY = 'sv.appsCache';
     var FIRST_WAIT_MS = 8000;   // espera inicial antes de mostrar algo
@@ -40,7 +57,7 @@
     var Diag = global.Store.Diag, errText = global.Store.errText;
 
     function entry(id, name, icon) {
-        return { id: id, name: String(name).trim(), icon: icon || '', color: colorFor(String(name)) };
+        return { id: id, name: String(name).trim(), icon: iconUrl(icon), color: colorFor(String(name)) };
     }
 
     function sortByName(list) {
@@ -154,11 +171,26 @@
 
     function normalize(list, loose) {
         var me = selfId(), seen = {}, out = [];
+        var known = {};
+        KNOWN.forEach(function (k) { k[1].forEach(function (id) { known[id] = true; }); });
         list.forEach(function (a) {
             if (!a || !a.id || seen[a.id] || a.id === me) return;
             if ((!loose && a.show === false) || HIDDEN.test(a.id) || !a.name) return;
+            // app sem ícone é quase sempre peça interna do sistema (os quadrados só com letra)
+            if (!loose && !a.iconPath && !known[a.id]) return;
             seen[a.id] = true;
             out.push(entry(a.id, a.name, a.iconPath));
+        });
+        // Netflix vem duas vezes em algumas TVs (a de fábrica e a da loja): fica só a da loja
+        var storeNetflix = out.some(function (x) { return /\.Netflix$/.test(x.id); });
+        if (storeNetflix) out = out.filter(function (x) { return x.id.indexOf('org.tizen.netflix') !== 0; });
+        // mesmo nome repetido: fica um só
+        var byName = {};
+        out = out.filter(function (x) {
+            var k = x.name.toLowerCase();
+            if (byName[k]) return false;
+            byName[k] = true;
+            return true;
         });
         return sortByName(out);
     }
@@ -185,6 +217,17 @@
         });
     }
 
-    var Apps = { load: load, normalize: normalize, defaultFavorites: defaultFavorites, launch: launch, onUpdate: null };
+    /** Tira os apps que o usuário mandou ocultar. */
+    function visible(list) {
+        var hidden = hiddenByUser();
+        if (!hidden.length) return list;
+        var out = list.filter(function (a) { return hidden.indexOf(a.id) < 0; });
+        out.source = list.source;
+        out.verified = list.verified;
+        return out;
+    }
+
+    var Apps = { load: load, normalize: normalize, defaultFavorites: defaultFavorites, launch: launch, onUpdate: null,
+        visible: visible, hiddenCount: function () { return hiddenByUser().length; } };
     global.Apps = Apps;
 })(this);

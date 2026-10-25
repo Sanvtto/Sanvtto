@@ -52,6 +52,13 @@ async function newPage(opts = {}) {
         if (opts.noCors && route.request().resourceType() === 'fetch' && /iiif|upload\.wikimedia/.test(url)) return route.abort('accessdenied');
         if (url.includes('commons.wikimedia.org/w/api.php')) {
             if (!opts.wikimedia) return route.fulfill({ status: 503, body: 'fora do ar' });
+            if (opts.wikimediaMany) {
+                const pages = {};
+                for (let k = 1; k <= 30; k++) pages[100 + k] = { pageid: 100 + k, title: 'File:Obra ' + k + '.jpg', imageinfo: [{
+                    thumburl: 'https://upload.wikimedia.org/thumb/o' + k + '.jpg/1920px-o' + k + '.jpg', width: 1600, height: 1100,
+                    extmetadata: { ObjectName: { value: 'Obra nº ' + k } } }] };
+                return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ query: { pages } }) });
+            }
             return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ query: { pages: {
                 11: { pageid: 11, title: 'File:Paisagem.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/thumb/a/paisagem.jpg/1920px-paisagem.jpg', width: 1600, height: 1000,
                     extmetadata: { ObjectName: { value: 'Paisagem com Rio' }, Artist: { value: '<a href="#">Fulano de Tal</a>' }, DateTimeOriginal: { value: '1882' } } }] },
@@ -223,7 +230,7 @@ async function noErrors(page) {
         assert.strictEqual(await page.evaluate(() => window.SanvttoApp.mode()), 'menu', 'menu não abriu');
         await page.screenshot({ path: path.join(OUT, 'menu.png') });
         const items = await page.$$eval('#menuItems .menu-item', (e) => e.map((x) => x.textContent));
-        assert.deepStrictEqual(items, ['Abrir', 'Adicionar aos favoritos']);
+        assert.deepStrictEqual(items, ['Abrir', 'Adicionar aos favoritos', 'Ocultar este app']);
         await key(page, K.D);
         await key(page, K.OK);
         let favs = await page.evaluate(() => JSON.parse(localStorage.getItem('sv.favs')));
@@ -271,16 +278,54 @@ async function noErrors(page) {
     });
 
     await test('sem permissão para listar apps: tela abre mesmo assim', async () => {
-        const page = await newPage({ init: () => { window.__APPS_FAIL = true; } });
+        const page = await newPage({ init: () => { window.__APPS_FAIL = true; window.__NO_SYSTEM_APPS = true; } });
         await page.waitForTimeout(300);
         assert(!(await page.$eval('#favHint', (e) => e.hidden)), 'deve mostrar dica');
         assert(await focusedInfo(page), 'foco no botão Quadro');
         await noErrors(page);
     });
 
+    await test('esconde peças do sistema, apps sem ícone e a Netflix repetida', async () => {
+        const page = await newPage();
+        const ids = await page.$$eval('#grid .card', (e) => e.map((x) => x.getAttribute('data-app')));
+        for (const bad of ['org.volt.search', 'org.volt.apps', 'org.tizen.caption', 'com.samsung.tv.store', 'Xa1b2C3d4E.EngineHelper', 'org.tizen.netflix-app']) {
+            assert(!ids.includes(bad), 'deveria esconder ' + bad);
+        }
+        const names = await page.$$eval('#grid .label', (e) => e.map((x) => x.textContent));
+        assert.strictEqual(names.filter((n) => n === 'Netflix').length, 1, 'Netflix repetida');
+        assert.strictEqual(ids.length, 15);
+        await noErrors(page);
+    });
+
+    await test('ocultar um app pelo menu e mostrar de novo nos ajustes', async () => {
+        const page = await newPage();
+        await key(page, K.OK); // detecta suporte a soltar tecla
+        await page.evaluate(() => { window.__launched = []; window.Nav.focus(document.querySelector('#grid [data-app="app10.Clima"]')); });
+        await key(page, K.OK, { hold: true });
+        const items = await page.$$eval('#menuItems .menu-item', (e) => e.map((x) => x.textContent));
+        assert(items.includes('Ocultar este app'), items.join(','));
+        await page.evaluate(() => window.Nav.focus([...document.querySelectorAll('.menu-item')].find((x) => x.textContent === 'Ocultar este app')));
+        await key(page, K.OK);
+        assert.strictEqual(await page.$$eval('#grid [data-app="app10.Clima"]', (e) => e.length), 0, 'não ocultou');
+        assert.strictEqual(await page.$$eval('#favRow [data-app="app0.Netflix"]', (e) => e.length), 1, 'ocultou o app errado');
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 14);
+        await page.reload();
+        await page.waitForSelector('#grid .card');
+        assert.strictEqual(await page.$$eval('#grid [data-app="app10.Clima"]', (e) => e.length), 0, 'voltou depois de reabrir');
+        await page.evaluate(() => window.SanvttoApp.openSettings());
+        await page.evaluate(() => window.Nav.focus([...document.querySelectorAll('.set-row')].find((x) => x.textContent.startsWith('Mostrar apps ocultos'))));
+        await key(page, K.OK);
+        await key(page, K.BACK);
+        assert.strictEqual(await page.$$eval('#grid [data-app="app10.Clima"]', (e) => e.length), 1, 'não mostrou de novo');
+        assert.strictEqual((await focusedInfo(page)).kind, 'fav', 'foco deve voltar para os apps, não para o botão Quadro');
+        assert.deepStrictEqual(await page.evaluate(() => window.__launched), [], 'não pode abrir app');
+        await noErrors(page);
+    });
+
     await test('lista de apps bloqueada: usa a lista reserva só com os instalados', async () => {
         const page = await newPage({ init: () => {
             window.__APPS_FAIL = true;
+            window.__NO_SYSTEM_APPS = true;
             window.__INSTALLED_KNOWN = [{ id: '3201907018807', name: 'Netflix', iconPath: '' }, { id: '111299001912', name: 'YouTube', iconPath: '' }];
         } });
         await page.waitForSelector('#grid .card');
@@ -297,7 +342,7 @@ async function noErrors(page) {
     await test('lista bloqueada e TV não deixa conferir: mostra a lista reserva inteira', async () => {
         const page = await newPage({ init: () => { window.__APPS_FAIL = true; window.__APPINFO_SECURITY = true; } });
         await page.waitForSelector('#grid .card');
-        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 8);
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 11);
         assert(/sem conferir/.test(await page.evaluate(() => window.Store.Diag.get('apps'))));
         await noErrors(page);
     });
@@ -351,7 +396,7 @@ async function noErrors(page) {
     });
 
     await test('TV lenta (20 s para listar apps): mostra quando chegar e guarda para a próxima', async () => {
-        const page = await newPage({ clock: true, offline: true, init: () => { window.__APPS_DELAY = 20000; } , noWait: true });
+        const page = await newPage({ clock: true, offline: true, init: () => { window.__APPS_DELAY = 20000; window.__NO_SYSTEM_APPS = true; }, noWait: true });
         await page.clock.runFor(8500);
         assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 0, 'ainda sem a lista');
         assert(/aguardando/.test(await page.evaluate(() => window.Store.Diag.get('apps'))));
@@ -375,6 +420,7 @@ async function noErrors(page) {
     await test('lista reserva acha o app pelo código do Tizen também', async () => {
         const page = await newPage({ init: () => {
             window.__APPS_FAIL = true;
+            window.__NO_SYSTEM_APPS = true;
             window.__INSTALLED_KNOWN = [{ id: '9Ur5IzDKqV.TizenYouTube', name: 'YouTube', iconPath: '' }];
         } });
         await page.waitForSelector('#grid .card');
@@ -382,10 +428,27 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
+    await test('busca pelo menos 20 obras e troca a cada 10 segundos', async () => {
+        const page = await newPage({ wikimedia: true, wikimediaMany: true, noCors: true });
+        for (let i = 0; i < 150 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 20; i++) await page.waitForTimeout(100);
+        const n = await page.evaluate(async () => (await window.Store.listArt()).length);
+        assert(n >= 20, 'só ' + n + ' obras');
+        await page.waitForFunction(() => /guardadas: \d+/.test(window.Store.Diag.get('art')), null, { timeout: 15000 });
+        await page.evaluate(() => { localStorage.setItem('sv.artIndex', 0); window.SanvttoApp.openArt(); });
+        await page.waitForTimeout(2500);
+        const seen = new Set([await page.textContent('#artTitle')]);
+        for (let i = 0; i < 2; i++) {
+            await page.waitForTimeout(10500);
+            seen.add(await page.textContent('#artTitle'));
+        }
+        assert(seen.size >= 3, 'não trocou a cada 10 s: ' + [...seen].join(' / '));
+        await noErrors(page);
+    });
+
     await test('Wikimedia recusa 1920 px: usa 1280 px', async () => {
         const page = await newPage({ wikimedia: true, wm1920Broken: true, noCors: true });
         for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 1; i++) await page.waitForTimeout(100);
-        const urls = await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.url));
+        const urls = await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.url).filter((u) => u.includes('wikimedia')));
         assert.deepStrictEqual(urls, ['https://upload.wikimedia.org/thumb/a/paisagem.jpg/1280px-paisagem.jpg']);
         await noErrors(page);
     });
@@ -467,8 +530,9 @@ async function noErrors(page) {
         await key(page, K.R, { wait: 0 });
         const want = await page.evaluate(() => window.Nav.current().getAttribute('data-title'));
         await key(page, K.OK, { wait: 0 });
-        await page.clock.runFor(2500);
-
+        await page.clock.runFor(500);
+        // a imagem carrega de forma assíncrona: espera o título mudar (até 5 s)
+        await page.waitForFunction((t) => document.getElementById('artTitle').textContent === t, want, { timeout: 5000 }).catch(() => {});
         assert.strictEqual(await page.textContent('#artTitle'), want, 'obra escolhida não apareceu');
         assert(!(await page.$eval('#gallery', (e) => e.hidden)), 'galeria deve continuar aberta');
         // estilo Shadowbox

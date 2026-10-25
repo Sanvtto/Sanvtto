@@ -9,8 +9,17 @@
     var names = window.__APP_NAMES || ['Netflix', 'YouTube', 'Prime Video', 'Disney+', 'Globoplay', 'Spotify', 'Plex', 'Internet',
         'Galeria', 'Música', 'Clima', 'Max', 'Apple TV', 'Twitch', 'Deezer'];
     var apps = names.map(function (n, i) {
-        return { id: 'app' + i + '.' + n.replace(/\W/g, ''), name: n, iconPath: i % 4 === 3 ? '' : icon(COLORS[i % COLORS.length], n.charAt(0)), show: true };
+        return { id: 'app' + i + '.' + n.replace(/\W/g, ''), name: n, iconPath: icon(COLORS[i % COLORS.length], n.charAt(0)), show: true };
     });
+    // como numa TV de verdade: peças internas do sistema, sem ícone, e a Netflix de fábrica repetida
+    if (!window.__APP_NAMES && !window.__NO_SYSTEM_APPS) {
+        apps.push({ id: 'org.volt.search', name: 'Search', iconPath: '', show: true });
+        apps.push({ id: 'org.volt.apps', name: 'Apps', iconPath: '/usr/apps/icon.png', show: true });
+        apps.push({ id: 'org.tizen.caption', name: 'Closed Caption', iconPath: '', show: true });
+        apps.push({ id: 'com.samsung.tv.store', name: 'Samsung Apps', iconPath: '/usr/x.png', show: true });
+        apps.push({ id: 'Xa1b2C3d4E.EngineHelper', name: 'Engine Helper', iconPath: '', show: true });
+        apps.push({ id: 'org.tizen.netflix-app', name: 'Netflix', iconPath: icon('#E50914', 'N'), show: true });
+    }
     apps.push({ id: 'org.tizen.hidden', name: 'Serviço', show: true });
     apps.push({ id: 'escondido.App', name: 'Escondido', show: false });
     apps.push({ id: 'SnvttoTV01.SanvttoTV', name: 'Sanvtto TV', show: true });

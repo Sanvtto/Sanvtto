@@ -7,7 +7,8 @@
         idleMin: 5,      // abrir o quadro após N min sem uso (0 = nunca)
         frameStyle: 1,   // 0 tela cheia, 1 moderno, 2 shadowbox, 3 madeira, 4 moldura preta
         matColor: 0,     // cor do passe-partout (ver Art.MATS)
-        artInterval: 15, // minutos entre obras
+        artSeconds: 10,  // segundos entre obras
+        hiddenApps: [],  // apps que o usuário ocultou
         nightDim: true,
         artClock: true,
         glass: 0,        // transparência: 0 vidro, 1 média, 2 reduzida
@@ -52,7 +53,8 @@
 
     // ------------------------------------------------------------------ acervo
 
-    var DB_NAME = 'sanvtto-art', STORE = 'art', MAX_CACHED = 50, PER_REFRESH = 8;
+    var DB_NAME = 'sanvtto-art', STORE = 'art', MAX_CACHED = 60, PER_REFRESH = 25;
+    var TARGET = 20; // obras guardadas que o quadro procura ter
     var REFRESH_MS = 12 * 3600 * 1000;
     var dbPromise = null;
 
@@ -190,8 +192,9 @@
     /** Wikimedia Commons: pinturas destacadas, API com CORS liberado (origin=*). */
     function fetchCommons(knownIds) {
         var url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'
-            + '&generator=categorymembers&gcmtitle=Category:Featured_pictures_of_paintings&gcmtype=file&gcmlimit=60'
-            + '&gcmsort=timestamp&gcmdir=' + (Math.random() < 0.5 ? 'asc' : 'desc')
+            + '&generator=categorymembers&gcmtitle=Category:Featured_pictures_of_paintings&gcmtype=file&gcmlimit=100'
+            // começa num ponto sorteado da categoria: cada busca traz obras diferentes
+            + '&gcmsort=sortkey&gcmstarthexsortkey=' + ('0' + Math.floor(Math.random() * 200 + 40).toString(16)).slice(-2)
             + '&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=1920&iiextmetadatafilter=ObjectName|Artist|DateTimeOriginal';
         return fetchWithTimeout(url, 15000).then(function (r) { return r.json(); }).then(function (res) {
             var pages = res.query && res.query.pages ? res.query.pages : {};
@@ -255,62 +258,83 @@
      */
     function downloadAll(items) {
         var saved = [];
-        return items.reduce(function (p, it) {
-            return p.then(function () {
-                var rec = { id: it.id, title: it.title, artist: it.artist, date: it.date, added: Date.now() };
-                return fetchWithTimeout(it.url, 30000).then(function (r) { return r.blob(); }).then(function (blob) {
-                    if (!isImageBlob(blob)) throw new Error('não é imagem');
-                    rec.blob = blob;
-                    return makeThumb(blob).then(function (t) { if (t) rec.thumb = t; });
-                }).catch(function () {
-                    return probeImage(it.url).then(function (ok) {
-                        if (ok) { rec.url = it.url; return; }
-                        if (it.alt) return probeImage(it.alt).then(function (ok2) { if (ok2) rec.url = it.alt; });
-                    });
-                }).then(function () {
-                    if (!rec.blob && !rec.url) return;
-                    return putArt(rec).then(function () { saved.push(rec); });
-                }).catch(function () { /* pula esta obra */ });
-            });
+        function one(it) {
+            var rec = { id: it.id, title: it.title, artist: it.artist, date: it.date, added: Date.now() };
+            return fetchWithTimeout(it.url, 30000).then(function (r) { return r.blob(); }).then(function (blob) {
+                if (!isImageBlob(blob)) throw new Error('não é imagem');
+                rec.blob = blob;
+                return makeThumb(blob).then(function (t) { if (t) rec.thumb = t; });
+            }).catch(function () {
+                return probeImage(it.url).then(function (ok) {
+                    if (ok) { rec.url = it.url; return; }
+                    if (it.alt) return probeImage(it.alt).then(function (ok2) { if (ok2) rec.url = it.alt; });
+                });
+            }).then(function () {
+                if (!rec.blob && !rec.url) return;
+                return putArt(rec).then(function () { saved.push(rec); });
+            }).catch(function () { /* pula esta obra */ });
+        }
+        // 4 de cada vez: rápido o bastante sem afogar a rede e a memória da TV
+        var batches = [];
+        for (var i = 0; i < items.length; i += 4) batches.push(items.slice(i, i + 4));
+        return batches.reduce(function (p, batch) {
+            return p.then(function () { return Promise.all(batch.map(one)); });
         }, Promise.resolve()).then(function () { return saved; });
     }
 
     var refreshing = null;
 
     /** Atualiza o acervo no máximo a cada 12 h (ou já, se force). Nunca rejeita. */
+    /** Uma rodada: tenta uma fonte de cada vez até uma trazer obras. Resolve {got, used, errors}. */
+    function fetchRound(known) {
+        var errors = [], used = '';
+        var sources = [['Wikimedia', fetchCommons], ['Art Institute', fetchArtInstitute], ['Met', fetchMet]];
+        return sources.reduce(function (p, src) {
+            return p.then(function (got) {
+                if (got.length) return got;
+                return src[1](known).then(function (list) {
+                    if (!list.length) errors.push(src[0] + ': nenhuma imagem abriu');
+                    used = src[0];
+                    return list;
+                }, function (e) { errors.push(src[0] + ': ' + errText(e)); return []; });
+            });
+        }, Promise.resolve([])).then(function (got) { return { got: got, used: used, errors: errors }; });
+    }
+
+    /**
+     * Atualiza o acervo: busca até ter pelo menos 20 obras (no máximo 3 rodadas por vez) e depois
+     * só a cada 12 h (ou já, se force). Nunca rejeita. Resolve com quantas obras novas chegaram.
+     */
     function refreshArt(force) {
         if (refreshing) return refreshing;
         if (!global.fetch) return Promise.resolve(0);
         refreshing = listArt().then(function (existing) {
-            if (!force && Date.now() - Prefs.get('lastArtFetch') < REFRESH_MS && existing.length >= 12) return 0;
-            var known = {};
+            if (!force && Date.now() - Prefs.get('lastArtFetch') < REFRESH_MS && existing.length >= TARGET) return 0;
+            var known = {}, total = existing.length, added = 0, used = {}, lastErrors = [], online = false;
             existing.forEach(function (a) { known[a.id] = true; });
-            var errors = [];
-            // tenta um museu de cada vez até um funcionar
-            var sources = [['Wikimedia', fetchCommons], ['Art Institute', fetchArtInstitute], ['Met', fetchMet]];
-            var used = '';
-            return sources.reduce(function (p, src) {
-                return p.then(function (got) {
-                    if (got.length) return got;
-                    return src[1](known).then(function (list) {
-                        if (!list.length) errors.push(src[0] + ': nenhuma imagem abriu');
-                        used = src[0];
-                        return list;
-                    }, function (e) { errors.push(src[0] + ': ' + errText(e)); return []; });
+            function round(n) {
+                return fetchRound(known).then(function (r) {
+                    r.got.forEach(function (a) { known[a.id] = true; if (!a.blob) online = true; });
+                    added += r.got.length;
+                    total += r.got.length;
+                    if (r.got.length) used[r.used] = true; else lastErrors = r.errors;
+                    // poucas obras ainda: busca de novo (cada rodada começa num ponto diferente do acervo)
+                    if (r.got.length && total < TARGET && n < 3) return round(n + 1);
                 });
-            }, Promise.resolve([]))
-                .then(function (got) {
-                    if (!got.length) {
-                        Diag.set('art', 'falhou — ' + errors.join(' | '));
-                        return 0;
-                    }
-                    Diag.set('art', got.length + ' obras novas (' + used + ')' + (got[0].blob ? '' : ' · direto da internet'));
-                    Prefs.set('lastArtFetch', Date.now());
-                    return listArt().then(function (all) {
-                        var extra = all.slice(MAX_CACHED);
-                        return Promise.all(extra.map(function (a) { return deleteArt(a.id).catch(function () {}); }));
-                    }).then(function () { return got.length; });
-                });
+            }
+            return round(1).then(function () {
+                if (!added) {
+                    Diag.set('art', 'falhou — ' + lastErrors.join(' | ') + ' · guardadas: ' + total);
+                    return 0;
+                }
+                Diag.set('art', added + ' obras novas (' + Object.keys(used).join(', ') + ') · guardadas: ' + Math.min(total, MAX_CACHED)
+                    + (online ? ' · direto da internet' : ''));
+                Prefs.set('lastArtFetch', Date.now());
+                return listArt().then(function (all) {
+                    var extra = all.slice(MAX_CACHED);
+                    return Promise.all(extra.map(function (a) { return deleteArt(a.id).catch(function () {}); }));
+                }).then(function () { return added; });
+            });
         }).catch(function (e) { Diag.set('art', 'falhou — ' + errText(e)); return 0; })
             .then(function (n) { refreshing = null; return n; });
         return refreshing;

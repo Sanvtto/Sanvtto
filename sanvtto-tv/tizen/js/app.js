@@ -73,7 +73,11 @@
 
     // ---------------------------------------------------------------- apps
 
+    var allApps = [];
+
     function setApps(list) {
+        allApps = list;
+        list = global.Apps.visible(list);
         apps = list;
         // favoritos padrão só com a lista verdadeira da TV (a reserva pode ter códigos diferentes)
         if (!Prefs.has('favs') && list.length && (list.source !== 'reserva' || list.verified)) {
@@ -229,6 +233,17 @@
         } else {
             items.push(['Adicionar aos favoritos', function () { favs.push(id); saveFavs(favs, 'fav:' + id); }]);
         }
+        items.push(['Ocultar este app', function () {
+            var hidden = Prefs.get('hiddenApps');
+            hidden = Array.isArray(hidden) ? hidden : [];
+            if (hidden.indexOf(id) < 0) hidden.push(id);
+            Prefs.set('hiddenApps', hidden);
+            if (pos >= 0) favs.splice(pos, 1);
+            Prefs.setFavorites(favs);
+            setApps(allApps);
+            closeMenu(null);
+            toast(a.name + ' foi ocultado (Ajustes › Apps ocultos para mostrar de novo)');
+        }]);
         $('menuTitle').textContent = a.name;
         var box = $('menuItems');
         box.innerHTML = '';
@@ -274,7 +289,7 @@
         ['c', 'Abrir sozinho após', 'idleMin', ['Nunca', '2 min', '5 min', '10 min', '15 min', '30 min'], [0, 2, 5, 10, 15, 30]],
         ['c', 'Estilo', 'frameStyle', Art.STYLES.map(function (s) { return s.name; }), Art.STYLES.map(function (s) { return s.id; })],
         ['c', 'Cor do passe-partout', 'matColor', Art.MATS.map(function (m) { return m.name; }), Art.MATS.map(function (m) { return m.id; })],
-        ['c', 'Trocar obra a cada', 'artInterval', ['1 min', '5 min', '15 min', '30 min', '1 hora', '3 horas'], [1, 5, 15, 30, 60, 180]],
+        ['c', 'Trocar obra a cada', 'artSeconds', ['10 segundos', '30 segundos', '1 minuto', '5 minutos', '15 minutos', '1 hora'], [10, 30, 60, 300, 900, 3600]],
         ['t', 'Escurecer à noite', 'nightDim'],
         ['t', 'Mostrar relógio', 'artClock'],
         ['a', 'Baixar novas obras agora', function () {
@@ -283,11 +298,17 @@
         }],
         ['h', 'Sistema'],
         ['a', 'Recarregar lista de apps', function () { loadApps().then(function () { toast(apps.length + ' apps'); }); }],
+        ['a', 'Mostrar apps ocultos', function () {
+            var n = global.Apps.hiddenCount();
+            Prefs.set('hiddenApps', []);
+            setApps(allApps);
+            toast(n ? n + (n === 1 ? ' app voltou' : ' apps voltaram') + ' para a lista' : 'Nenhum app oculto');
+        }],
         ['i', 'Abrir ao ligar a TV', 'Todas as configurações › Geral e Privacidade › Opções da tela inicial › Executar último app'],
         ['h', 'Diagnóstico'],
         ['i', 'Apps', function () { return global.Store.Diag.get('apps'); }],
         ['i', 'Obras', function () { return global.Store.Diag.get('art'); }],
-        ['i', 'Versão', function () { return 'Sanvtto TV 1.2 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
+        ['i', 'Versão', function () { return 'Sanvtto TV 1.3 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
     ];
 
     function openSettings() {
@@ -358,7 +379,10 @@
         applyTheme();
         mode = 'home';
         Nav.setScope($('home'));
-        Nav.focus(returnFocus && doc.body.contains(returnFocus) ? returnFocus : Nav.first());
+        // se a grade foi refeita enquanto os ajustes estavam abertos, volta para o primeiro app
+        Nav.focus(returnFocus && doc.body.contains(returnFocus) ? returnFocus
+            : (doc.querySelector('#favRow .card') || doc.querySelector('#grid .card') || Nav.first()));
+        scrollTo(Nav.current());
     }
 
     // ---------------------------------------------------------------- quadro

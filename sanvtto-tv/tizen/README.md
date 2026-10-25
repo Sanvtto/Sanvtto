@@ -10,7 +10,10 @@ Versão para TVs Samsung com Tizen, feita para a **Crystal UHD BU8000** (Tizen 6
 - **Modo seguro** se der erro.
 - **Ajustes › Diagnóstico** mostra quantos apps a TV entregou e se as obras baixaram (com o erro, se houver).
   Se a TV não liberar a lista de apps, o app usa uma lista reserva (Netflix, YouTube, Prime Video, Disney+, Spotify, Apple TV, Plex).
-  As obras vêm do Art Institute of Chicago, do Wikimedia Commons ou do Met (o que funcionar), e aparecem direto da internet se a TV não deixar guardar.
+  As obras vêm do Wikimedia Commons, do Art Institute of Chicago ou do Met (o que funcionar), e aparecem direto da internet se a TV não deixar guardar.
+- A grade esconde as peças internas do sistema e apps repetidos (filtro baseado no do [Free My TV](https://github.com/simbasjungles/free-my-tv)).
+  Se ainda sobrar algum app que você não quer: segure OK nele → **Ocultar este app**. Para trazer de volta: Ajustes → **Mostrar apps ocultos**.
+- O quadro guarda pelo menos 20 obras e troca a cada 10 segundos (ajustável em Ajustes → Trocar obra a cada).
 
 ## O que a Samsung permite e o que não permite
 
@@ -53,5 +56,5 @@ Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alte
 
 ```bash
 ./build-wgt.sh                      # gera release/SanvttoTV.wgt
-cd tests && npm install && npm test # 33 testes no Chromium com a API da TV simulada (prints em test-output/)
+cd tests && npm install && npm test # 36 testes no Chromium com a API da TV simulada (prints em test-output/)
 ```
