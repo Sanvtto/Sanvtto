@@ -153,7 +153,6 @@
                     app.accent = c;
                     saveAccent(app.id, c);
                 }
-                if (Nav.current() === card) setAccent(c);
             };
             img.onerror = function () { img.remove(); };
             img.src = app.icon;
@@ -173,7 +172,7 @@
         return t;
     }
 
-    // ---------------------------------------------------------------- cor do app em foco no fundo
+    // ---------------------------------------------------------------- cor de cada app (para o card)
 
     /** Cor principal do ícone (média ponderada pelos pixels mais coloridos). Null se não der para ler. */
     function iconColor(img) {
@@ -214,34 +213,6 @@
             Prefs.set('accents', accentPending);
             accentPending = null;
         }, 500);
-    }
-
-    function shadeHex(hex, f) {
-        var n = parseInt(hex.slice(1), 16);
-        var c = [n >> 16 & 255, n >> 8 & 255, n & 255].map(function (v) { return Math.round(v * (1 + f)); });
-        return 'rgb(' + c.join(',') + ')';
-    }
-
-    // duas camadas que trocam com fade de opacidade: o jeito mais leve de animar a tela inteira na TV
-    var accentFront = 0, accentTimer = null, accentNow = '';
-    function setAccent(color) {
-        clearTimeout(accentTimer);
-        // espera a navegação "assentar" para não piscar ao passar rápido pelos apps
-        accentTimer = setTimeout(function () {
-            if ((color || '') === accentNow) return;
-            accentNow = color || '';
-            var layers = [$('accentA'), $('accentB')];
-            if (color) {
-                var back = layers[1 - accentFront];
-                back.style.background = 'radial-gradient(120% 95% at 50% 28%, ' + color + ' 0%, ' + shadeHex(color, -0.6) + ' 100%)';
-                back.classList.add('on');
-                layers[accentFront].classList.remove('on');
-                accentFront = 1 - accentFront;
-            } else {
-                layers[0].classList.remove('on');
-                layers[1].classList.remove('on');
-            }
-        }, 90);
     }
 
     function renderApps() {
@@ -455,7 +426,7 @@
         ['h', 'Diagnóstico'],
         ['i', 'Apps', function () { return global.Store.Diag.get('apps'); }],
         ['i', 'Obras', function () { return global.Store.Diag.get('art'); }],
-        ['i', 'Versão', function () { return 'Sanvtto TV 1.6 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
+        ['i', 'Versão', function () { return 'Sanvtto TV 1.7 · ' + (navigator.userAgent.match(/Tizen [\d.]+/) || ['navegador'])[0]; }]
     ];
 
     function openSettings() {
@@ -692,11 +663,7 @@
     }
 
     Nav.onFocus = function (el) {
-        if (mode === 'home') {
-            scrollTo(el);
-            var item = el.getAttribute('data-app') ? find(el.getAttribute('data-app')) : null;
-            setAccent(item ? (item.accent || item.color) : null);
-        }
+        if (mode === 'home') scrollTo(el);
         else if (mode === 'settings') scrollSettings(el);
         else if (mode === 'art') Art.scrollTo(el);
     };

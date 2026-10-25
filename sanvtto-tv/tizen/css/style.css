@@ -15,7 +15,7 @@
     --glass-hi: rgba(255, 255, 255, .18);
     --glass-edge: rgba(255, 255, 255, .22);
     --glass-spec: rgba(255, 255, 255, .45);
-    --sheet: rgba(28, 28, 32, .62);
+    --sheet: rgba(28, 28, 32, .9);
     --text-shadow: 0 1px 12px rgba(0, 0, 0, .35);
 
     /* nível de transparência (padrão: Vidro) */
@@ -32,7 +32,7 @@ body.light {
     --glass-hi: rgba(255, 255, 255, .55);
     --glass-edge: rgba(255, 255, 255, .7);
     --glass-spec: rgba(255, 255, 255, .9);
-    --sheet: rgba(250, 250, 252, .66);
+    --sheet: rgba(250, 250, 252, .92);
     --text-shadow: 0 1px 10px rgba(255, 255, 255, .5);
     --scrim-top: rgba(242, 242, 245, .25);
     --scrim-bottom: rgba(242, 242, 245, .65);
@@ -78,7 +78,6 @@ body.in-settings #home { visibility: hidden; }
 #content {
     padding: 60px 96px 120px;
     transition: transform .45s var(--ease);
-    will-change: transform;
 }
 
 header { display: flex; align-items: center; justify-content: space-between; }
@@ -114,7 +113,7 @@ h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px
 #favHint { font-size: 28px; color: var(--sub); margin: 16px 8px; }
 
 .row-viewport { margin: 0 -96px; padding: 16px 96px 0; overflow: hidden; }
-.row { display: flex; transition: transform .4s var(--ease); will-change: transform; }
+.row { display: flex; transition: transform .3s var(--ease); }
 
 #grid .grid-row { display: flex; padding: 16px 8px 0; }
 
@@ -125,8 +124,7 @@ h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px
     border-radius: 28px;
     overflow: hidden;
     background: var(--glass);
-    transition: transform .22s var(--ease);
-    will-change: transform;
+    transition: transform .2s var(--ease);
 }
 /* cor do app, translúcida: o fundo aparece através dela */
 .card .tint {
@@ -149,7 +147,6 @@ h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px
     left: 50%; top: 50%;
     width: 46%;
     transform: translate(-50%, -50%);
-    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .25));
 }
 .card .initial {
     position: absolute; left: 0; top: 0; width: 100%; height: 100%;
@@ -215,12 +212,6 @@ h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px
     padding: 40px 32px;
     color: var(--text);
     box-shadow: inset 0 1.5px 0 var(--glass-spec), inset 0 0 0 1.5px var(--glass-edge), 0 40px 80px rgba(0, 0, 0, .35);
-}
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body:not(.glass-low) .sheet {
-        -webkit-backdrop-filter: blur(36px) saturate(1.6);
-        backdrop-filter: blur(36px) saturate(1.6);
-    }
 }
 #menuTitle { font-size: 34px; font-weight: 600; padding: 0 24px 24px; }
 .menu-item {
@@ -402,18 +393,7 @@ h2 { font-size: 32px; font-weight: 500; color: var(--sub); margin: 60px 8px 20px
 .tile.fav .card .brand-text { font-size: 48px; }
 #inputRow { padding: 16px 8px 0; display: flex; }
 
-/* fundo na cor do app em foco (efeito Apple TV) */
-#accent { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
-.accent-layer {
-    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-    opacity: 0;
-    transition: opacity .6s ease;
-    will-change: opacity;
-}
-.accent-layer.on { opacity: var(--accent-op); }
-:root { --accent-op: .85; --tile-op: .92; }
-body.light { --accent-op: .55; }
-body.glass-low { --accent-op: .5; }
+:root { --tile-op: .92; }
 
 /* todos os cards no mesmo padrão: a cor do app quase sólida, com o vidro por cima */
 .card .tint { opacity: var(--tile-op); }

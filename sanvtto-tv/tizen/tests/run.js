@@ -40,7 +40,7 @@ async function newPage(opts = {}) {
     await page.route(/upload\.wikimedia\.org/, async (route) => {
         if (opts.offline) return route.abort('internetdisconnected');
         // Wikimedia recusando tamanho fora do padrão
-        if (opts.wm1920Broken && route.request().url().includes('/1920px-')) return route.fulfill({ status: 429, body: 'tamanho não padrão' });
+        if (opts.wm1280Broken && route.request().url().includes('/1280px-')) return route.fulfill({ status: 429, body: 'tamanho recusado' });
         if (opts.noCors && route.request().resourceType() === 'fetch') return route.abort('accessdenied');
         return route.fulfill({ contentType: 'image/jpeg', body: jpeg });
     });
@@ -55,12 +55,12 @@ async function newPage(opts = {}) {
             if (opts.wikimediaMany) {
                 const pages = {};
                 for (let k = 1; k <= 30; k++) pages[100 + k] = { pageid: 100 + k, title: 'File:Obra ' + k + '.jpg', imageinfo: [{
-                    thumburl: 'https://upload.wikimedia.org/thumb/o' + k + '.jpg/1920px-o' + k + '.jpg', width: 1600, height: 1100,
+                    thumburl: 'https://upload.wikimedia.org/thumb/o' + k + '.jpg/1280px-o' + k + '.jpg', width: 1600, height: 1100,
                     extmetadata: { ObjectName: { value: 'Obra nº ' + k } } }] };
                 return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ query: { pages } }) });
             }
             return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ query: { pages: {
-                11: { pageid: 11, title: 'File:Paisagem.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/thumb/a/paisagem.jpg/1920px-paisagem.jpg', width: 1600, height: 1000,
+                11: { pageid: 11, title: 'File:Paisagem.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/thumb/a/paisagem.jpg/1280px-paisagem.jpg', width: 1600, height: 1000,
                     extmetadata: { ObjectName: { value: 'Paisagem com Rio' }, Artist: { value: '<a href="#">Fulano de Tal</a>' }, DateTimeOriginal: { value: '1882' } } }] },
                 12: { pageid: 12, title: 'File:Torre.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a/torre.jpg', width: 300, height: 1500 }] }
             } } }) });
@@ -165,7 +165,7 @@ async function noErrors(page) {
     await test('tela inicial: lista apps, esconde os do sistema e cria favoritos', async () => {
         const page = await newPage();
         const n = await page.$$eval('#grid .card', (e) => e.length);
-        assert.strictEqual(n, 15, 'apps visíveis');
+        assert.strictEqual(n, 17, 'apps visíveis (15 + Apple TV + TV Plus)');
         const favs = await page.$$eval('#favRow .card', (e) => e.map((x) => x.getAttribute('data-app')));
         assert(favs[0].endsWith('Netflix') && favs[1].endsWith('YouTube'), 'ordem dos favoritos: ' + favs);
         const f = await focusedInfo(page);
@@ -294,7 +294,7 @@ async function noErrors(page) {
         }
         const names = await page.$$eval('#grid .label', (e) => e.map((x) => x.textContent));
         assert.strictEqual(names.filter((n) => n === 'Netflix').length, 1, 'Netflix repetida');
-        assert.strictEqual(ids.length, 15);
+        assert.strictEqual(ids.length, 17);
         await noErrors(page);
     });
 
@@ -356,48 +356,42 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
-    await test('fundo muda para a cor do app em foco, com todos os ícones no mesmo padrão', async () => {
+    await test('cards na cor de cada app, fundo parado e nenhum efeito pesado para a TV', async () => {
         const page = await newPage();
-        const accent = () => page.evaluate(() => {
-            const on = document.querySelector('.accent-layer.on');
-            return on ? on.style.background : '';
-        });
-        const focusApp = async (id) => {
-            await page.evaluate((v) => window.Nav.focus(document.querySelector('#grid [data-app="' + v + '"]')), id);
-            await page.waitForTimeout(200);
-        };
-        await focusApp('app1.YouTube');
-        assert(/rgb\(230, 33, 23\)/.test(await accent()), 'YouTube: ' + await accent());
+        // card de app sem ícone de marca: cor tirada do ícone da TV (Globoplay é vermelho #FB0234 no teste)
+        await page.waitForFunction(() => {
+            const t = document.querySelector('#grid [data-app="app4.Globoplay"] .tint');
+            return t && /rgb\(2[0-9]{2}, [0-5]?\d, /.test(getComputedStyle(t).backgroundColor);
+        }, null, { timeout: 5000 });
+        // o fundo não muda mais com o foco (a camada de tela cheia travava a TV)
+        assert.strictEqual(await page.$$eval('#accent, .accent-layer', (e) => e.length), 0);
+        const bgBefore = await page.$eval('#scrim', (e) => getComputedStyle(e).backgroundImage);
+        await page.evaluate(() => window.Nav.focus(document.querySelector('#grid [data-app="app1.YouTube"]')));
+        await page.waitForTimeout(300);
+        assert.strictEqual(await page.$eval('#scrim', (e) => getComputedStyle(e).backgroundImage), bgBefore);
+        // nada de will-change, filtro ou desfoque em tempo real em nenhum elemento
+        const heavy = await page.evaluate(() => [...document.querySelectorAll('*')].filter((e) => {
+            const c = getComputedStyle(e);
+            return c.willChange !== 'auto' || c.filter !== 'none' || (c.backdropFilter && c.backdropFilter !== 'none');
+        }).map((e) => e.id || e.className).slice(0, 5));
+        assert.deepStrictEqual(heavy, [], 'efeitos pesados: ' + heavy.join(', '));
+        // a cor tirada do ícone fica guardada
         await page.waitForTimeout(700);
-        await page.screenshot({ path: path.join(OUT, 'fundo-youtube.png') });
-        await focusApp('app2.PrimeVideo');
-        assert(/rgb\(0, 168, 225\)/.test(await accent()), 'Prime: ' + await accent());
-        await page.waitForTimeout(700);
-        await page.screenshot({ path: path.join(OUT, 'fundo-prime.png') });
-        // app sem ícone de marca: a cor sai do ícone da TV (Globoplay é vermelho #FB0234 no teste)
-        await focusApp('app4.Globoplay');
-        const gp = await accent();
-        const m = gp.match(/rgb\((\d+), (\d+), (\d+)\)/);
-        assert(m && +m[1] > 200 && +m[2] < 60 && +m[3] < 90, 'Globoplay: ' + gp);
-        const tint = await page.$eval('#grid [data-app="app4.Globoplay"] .tint', (e) => getComputedStyle(e).backgroundColor);
-        assert(/rgb\(2[0-9]{2}, [0-5]?\d, /.test(tint), 'card na cor do ícone: ' + tint);
-        await page.waitForTimeout(700);
-        await page.screenshot({ path: path.join(OUT, 'fundo-globoplay.png') });
-        // botões de cima: fundo volta ao normal
-        await page.evaluate(() => window.Nav.focus(document.getElementById('btnSettings')));
-        await page.waitForTimeout(200);
-        assert.strictEqual(await page.$$eval('.accent-layer.on', (e) => e.length), 0);
-        // passar rápido por vários apps não pisca: só a cor do último fica
-        await page.evaluate(() => {
-            const cards = [...document.querySelectorAll('#grid .card')].slice(0, 10);
-            cards.forEach((c) => window.Nav.focus(c));
-        });
-        await page.waitForTimeout(200);
-        assert.strictEqual(await page.$$eval('.accent-layer.on', (e) => e.length), 1);
-        // a cor tirada do ícone fica guardada para a próxima vez
-        await page.waitForTimeout(600);
         const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sv.accents') || '{}'));
-        assert(saved['app4.Globoplay'], 'cor não foi guardada: ' + JSON.stringify(saved));
+        assert(saved['app4.Globoplay'], 'cor não foi guardada');
+        await noErrors(page);
+    });
+
+    await test('Apple TV aparece (na Samsung ele se chama com.samsung.tv.aria-video)', async () => {
+        const page = await newPage();
+        await page.waitForSelector('#grid [data-app="com.samsung.tv.aria-video"]');
+        const label = await page.$eval('#grid [data-app="com.samsung.tv.aria-video"]', (e) => e.parentNode.textContent);
+        assert(/Apple TV/.test(label), label);
+        assert(await page.$('#grid [data-app="com.samsung.tv.aria-video"] .brand svg'), 'ícone da Apple TV');
+        for (const id of ['com.samsung.tv.store', 'com.samsung.tv.SmartThingsApp', 'xyz.AdPlayer', 'abc.TvService']) {
+            assert.strictEqual(await page.$$eval('[data-app="' + id + '"]', (e) => e.length), 0, 'deveria esconder ' + id);
+        }
+        assert.strictEqual(await page.$$eval('#grid [data-app="com.samsung.tv.tvplus"]', (e) => e.length), 1, 'Samsung TV Plus');
         await noErrors(page);
     });
 
@@ -424,7 +418,7 @@ async function noErrors(page) {
         await key(page, K.OK);
         assert.strictEqual(await page.$$eval('#grid [data-app="app10.Clima"]', (e) => e.length), 0, 'não ocultou');
         assert.strictEqual(await page.$$eval('#favRow [data-app="app0.Netflix"]', (e) => e.length), 1, 'ocultou o app errado');
-        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 14);
+        assert.strictEqual(await page.$$eval('#grid .card', (e) => e.length), 16);
         await page.reload();
         await page.waitForSelector('#grid .card');
         assert.strictEqual(await page.$$eval('#grid [data-app="app10.Clima"]', (e) => e.length), 0, 'voltou depois de reabrir');
@@ -561,11 +555,11 @@ async function noErrors(page) {
         await noErrors(page);
     });
 
-    await test('Wikimedia recusa 1920 px: usa 1280 px', async () => {
-        const page = await newPage({ wikimedia: true, wm1920Broken: true, noCors: true });
+    await test('Wikimedia recusa 1280 px: usa 960 px', async () => {
+        const page = await newPage({ wikimedia: true, wm1280Broken: true, noCors: true });
         for (let i = 0; i < 100 && (await page.evaluate(async () => (await window.Store.listArt()).length)) < 1; i++) await page.waitForTimeout(100);
         const urls = await page.evaluate(async () => (await window.Store.listArt()).map((a) => a.url).filter((u) => u.includes('wikimedia')));
-        assert.deepStrictEqual(urls, ['https://upload.wikimedia.org/thumb/a/paisagem.jpg/1280px-paisagem.jpg']);
+        assert.deepStrictEqual(urls, ['https://upload.wikimedia.org/thumb/a/paisagem.jpg/960px-paisagem.jpg']);
         await noErrors(page);
     });
 

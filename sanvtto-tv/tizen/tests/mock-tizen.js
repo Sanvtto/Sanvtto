@@ -7,7 +7,7 @@
             + 'fill="#fff" font-family="Arial" font-weight="bold">' + letter + '</text></svg>');
     }
     var names = window.__APP_NAMES || ['Netflix', 'YouTube', 'Prime Video', 'Disney+', 'Globoplay', 'Spotify', 'Plex', 'Internet',
-        'Galeria', 'Música', 'Clima', 'Max', 'Apple TV', 'Twitch', 'Deezer'];
+        'Galeria', 'Música', 'Clima', 'Max', 'Rakuten TV', 'Twitch', 'Deezer'];
     var apps = names.map(function (n, i) {
         return { id: 'app' + i + '.' + n.replace(/\W/g, ''), name: n, iconPath: icon(COLORS[i % COLORS.length], n.charAt(0)), show: true };
     });
@@ -19,6 +19,11 @@
         apps.push({ id: 'com.samsung.tv.store', name: 'Samsung Apps', iconPath: '/usr/x.png', show: true });
         apps.push({ id: 'Xa1b2C3d4E.EngineHelper', name: 'Engine Helper', iconPath: '', show: true });
         apps.push({ id: 'org.tizen.netflix-app', name: 'Netflix', iconPath: icon('#E50914', 'N'), show: true });
+        apps.push({ id: 'com.samsung.tv.aria-video', name: 'aria-video', iconPath: '', show: true }); // Apple TV
+        apps.push({ id: 'com.samsung.tv.tvplus', name: 'Samsung TV Plus', iconPath: icon('#1428A0', 'T'), show: true });
+        apps.push({ id: 'com.samsung.tv.SmartThingsApp', name: 'SmartThings', iconPath: icon('#15BFFF', 'S'), show: true });
+        apps.push({ id: 'xyz.AdPlayer', name: 'Ad Player', iconPath: icon('#999999', 'A'), show: true });
+        apps.push({ id: 'abc.TvService', name: 'Tv Service', iconPath: icon('#999999', 'S'), show: true });
     }
     apps.push({ id: 'org.tizen.hidden', name: 'Serviço', show: true });
     apps.push({ id: 'escondido.App', name: 'Escondido', show: false });

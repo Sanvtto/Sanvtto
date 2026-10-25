@@ -39,7 +39,7 @@
         { re: /^plex/i, path: 'plex', bg: '#1F1F1F', fg: '#EBAF00', accent: '#C98F00' },
         { re: /^crunchyroll/i, path: 'crunchyroll', bg: '#FF5E00', fg: '#ffffff', accent: '#FF5E00' },
         { re: /^paramount/i, path: 'paramountplus', bg: '#0064FF', fg: '#ffffff', accent: '#0064FF' },
-        { re: /^apple tv/i, path: 'appletv', bg: '#000000', fg: '#ffffff', accent: '#48484A' },
+        { re: /^apple tv/i, path: 'appletv', bg: '#000000', fg: '#ffffff', accent: '#48484A', force: true },
         { re: /^twitch/i, path: 'twitch', bg: '#9146FF', fg: '#ffffff', accent: '#9146FF' },
         { re: /^(hbo ?max|max$)/i, path: 'hbomax', bg: '#0A1238', fg: '#ffffff', accent: '#2B3BD9' }
     ];

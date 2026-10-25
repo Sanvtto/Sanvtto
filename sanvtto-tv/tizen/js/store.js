@@ -204,11 +204,11 @@
     /** Wikimedia Commons: pinturas destacadas, API com CORS liberado (origin=*). */
     function fetchCommons(knownIds) {
         var url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'
-            + '&generator=categorymembers&gcmtitle=Category:Featured_pictures_of_paintings&gcmtype=file&gcmlimit=100'
+            + '&generator=categorymembers&gcmtitle=Category:Featured_pictures_of_paintings&gcmtype=file&gcmlimit=40'
             // começa numa data sorteada (2006–2024) da categoria: cada busca traz obras diferentes e nunca vem vazia
             + '&gcmsort=timestamp&gcmdir=' + (Math.random() < 0.5 ? 'asc' : 'desc') + '&gcmstart=' + randomDate()
-            + '&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=1920&iiextmetadatafilter=ObjectName|Artist|DateTimeOriginal';
-        return fetchWithTimeout(url, 15000).then(function (r) { return r.json(); }).then(function (res) {
+            + '&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=1280&iiextmetadatafilter=ObjectName|DateTimeOriginal';
+        return fetchWithTimeout(url, 30000).then(function (r) { return r.json(); }).then(function (res) {
             var pages = res.query && res.query.pages ? res.query.pages : {};
             var list = [];
             Object.keys(pages).forEach(function (k) {
@@ -225,8 +225,8 @@
                     artist: plain(md.Artist),
                     date: plain(md.DateTimeOriginal),
                     url: ii.thumburl,
-                    // o Wikimedia só serve miniaturas em tamanhos padrão; se 1920 falhar, tenta 1280
-                    alt: ii.thumburl.indexOf('/1920px-') > 0 ? ii.thumburl.replace('/1920px-', '/1280px-') : ''
+                    // o Wikimedia só serve miniaturas em tamanhos padrão; se 1280 falhar, tenta 960
+                    alt: ii.thumburl.indexOf('/1280px-') > 0 ? ii.thumburl.replace('/1280px-', '/960px-') : ''
                 });
             });
             return downloadAll(shuffle(list).slice(0, PER_REFRESH));
@@ -267,8 +267,11 @@
      * Baixa uma por vez (a rede e a memória da TV agradecem). Se a TV não deixar baixar o arquivo
      * (bloqueio de CORS), guarda só o endereço: a obra aparece direto da internet.
      */
+    var lastDownload = { tried: 0, ok: 0, why: '' }; // para o diagnóstico
+
     function downloadAll(items) {
         var saved = [];
+        lastDownload = { tried: items.length, ok: 0, why: '' };
         function one(it) {
             var rec = { id: it.id, title: it.title, artist: it.artist, date: it.date, country: it.country || '', added: Date.now() };
             return fetchWithTimeout(it.url, 30000).then(function (r) { return r.blob(); }).then(function (blob) {
@@ -278,19 +281,21 @@
                     rec.blob = blob;
                     if (t && t.blob) rec.thumb = t.blob;
                 });
-            }).catch(function () {
+            }).catch(function (e) {
+                if (!lastDownload.why) lastDownload.why = errText(e);
                 return probeImage(it.url).then(function (ok) {
                     if (ok) { rec.url = it.url; return; }
                     if (it.alt) return probeImage(it.alt).then(function (ok2) { if (ok2) rec.url = it.alt; });
                 });
             }).then(function () {
                 if (!rec.blob && !rec.url) return;
+                lastDownload.ok++;
                 return putArt(rec).then(function () { saved.push(rec); });
             }).catch(function () { /* pula esta obra */ });
         }
-        // 4 de cada vez: rápido o bastante sem afogar a rede e a memória da TV
+        // 2 de cada vez: a TV tem pouca memória e o Wikimedia limita muitos pedidos seguidos
         var batches = [];
-        for (var i = 0; i < items.length; i += 4) batches.push(items.slice(i, i + 4));
+        for (var i = 0; i < items.length; i += 2) batches.push(items.slice(i, i + 2));
         return batches.reduce(function (p, batch) {
             return p.then(function () { return Promise.all(batch.map(one)); });
         }, Promise.resolve()).then(function () { return saved; });
@@ -307,7 +312,11 @@
             return p.then(function (got) {
                 if (got.length) return got;
                 return src[1](known).then(function (list) {
-                    if (!list.length) errors.push(src[0] + ': nenhuma imagem abriu');
+                    if (!list.length) {
+                        errors.push(src[0] + ': ' + (lastDownload.tried
+                            ? lastDownload.tried + ' encontradas, nenhuma abriu' + (lastDownload.why ? ' (' + lastDownload.why + ')' : '')
+                            : 'nenhuma obra nova encontrada'));
+                    }
                     used = src[0];
                     return list;
                 }, function (e) { errors.push(src[0] + ': ' + errText(e)); return []; });
@@ -324,9 +333,10 @@
         if (!global.fetch) return Promise.resolve(0);
         refreshing = listArt().then(function (existing) {
             if (!force && Date.now() - Prefs.get('lastArtFetch') < REFRESH_MS && existing.length >= TARGET) return 0;
-            var known = {}, total = existing.length, added = 0, used = {}, lastErrors = [], online = false;
+            var known = {}, total = existing.length, added = 0, used = {}, lastErrors = [], online = false, rounds = 0;
             existing.forEach(function (a) { known[a.id] = true; });
             function round(n) {
+                rounds = n;
                 return fetchRound(known).then(function (r) {
                     r.got.forEach(function (a) { known[a.id] = true; if (!a.blob) online = true; });
                     added += r.got.length;
@@ -338,11 +348,12 @@
             }
             return round(1).then(function () {
                 if (!added) {
-                    Diag.set('art', 'falhou — ' + lastErrors.join(' | ') + ' · guardadas: ' + total);
+                    Diag.set('art', 'falhou em ' + rounds + ' buscas — ' + lastErrors.join(' | ') + ' · guardadas: ' + total);
                     return 0;
                 }
-                Diag.set('art', added + ' obras novas (' + Object.keys(used).join(', ') + ') · guardadas: ' + Math.min(total, MAX_CACHED)
-                    + (online ? ' · direto da internet' : ''));
+                Diag.set('art', added + ' obras novas em ' + rounds + ' buscas (' + Object.keys(used).join(', ') + ') · guardadas: '
+                    + Math.min(total, MAX_CACHED) + (online ? ' · direto da internet' : '')
+                    + (total < TARGET && lastErrors.length ? ' · última falha: ' + lastErrors.join(' | ') : ''));
                 Prefs.set('lastArtFetch', Date.now());
                 return listArt().then(function (all) {
                     var extra = all.slice(MAX_CACHED);

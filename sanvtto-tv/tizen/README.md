@@ -3,9 +3,9 @@
 Versão para TVs Samsung com Tizen, feita para a **Crystal UHD BU8000** (Tizen 6.5) e testada num navegador com a API da TV simulada. Inclui:
 
 - **Visual de vidro** (Liquid Glass, como no macOS 26/27): cards, botões e menus translúcidos com bordas de luz, e a obra do quadro aparecendo
-  desfocada atrás. Em **Ajustes → Transparência** dá para escolher **Vidro**, **Média** ou **Reduzida** (para quando a leitura ficar difícil).
-- **Fundo na cor do app em foco** (como na Apple TV): cada card fica na cor do app — a oficial da marca, ou a cor principal
-  tirada do ícone da própria TV (calculada uma vez e guardada).
+  desfocada atrás (o desfoque é feito uma vez só, não em tempo real). Em **Ajustes → Transparência** dá para escolher **Vidro**, **Média** ou **Reduzida** (para quando a leitura ficar difícil).
+- **Cards na cor de cada app** — a oficial da marca, ou a cor principal tirada do ícone da própria TV (calculada uma vez e guardada).
+- **Leve para a TV**: só transform e opacidade animam; nada de will-change, filtros ou desfoque em tempo real (lição do Free My TV).
 - **Tela inicial** no estilo Apple TV e **tema que escurece sozinho** com o pôr do sol.
 - **Modo quadro** no estilo do Modo Arte da The Frame: passe-partout **Moderno** ou **Shadowbox**, moldura de madeira ou preta, 7 cores
   (Polar, Quente, Neutro, Sálvia, Areia, Vinho, Preto). Aperte **↓** no quadro para abrir a **galeria**, com as obras, os estilos e as cores.
@@ -60,5 +60,5 @@ Apps → Sanvtto TV → segure OK → **Excluir**. Nada no sistema da TV é alte
 
 ```bash
 ./build-wgt.sh                      # gera release/SanvttoTV.wgt
-cd tests && npm install && npm test # 43 testes no Chromium com a API da TV simulada (prints em test-output/)
+cd tests && npm install && npm test # 44 testes no Chromium com a API da TV simulada (prints em test-output/)
 ```

@@ -8,8 +8,23 @@
     // Apps internos do sistema (Smart Hub, serviços, teclados...) que não fazem sentido na grade.
     // Mantém os da Samsung que são apps de verdade: navegador, Netflix, Prime Video, Globoplay, TV Plus.
     // (filtro baseado no do projeto Free My TV: github.com/simbasjungles/free-my-tv)
-    var HIDDEN = new RegExp('^(org\\.volt\\.|org\\.tizen\\.(?!browser$|netflix|primevideo$|globoplay)'
-        + '|com\\.samsung\\.(?!tv\\.tvplus|tvplus))|\\.(service|widget|ime|keyboard)$', 'i');
+    var HIDDEN = new RegExp([
+        '^org\\.volt\\.',
+        '^org\\.tizen\\.(?!browser$|netflix|primevideo$|globoplay)',
+        '^org\\.tizen\\.netflixlowmem$',
+        // apps de verdade da Samsung que aparecem na tela inicial dela: Apple TV (aria-video), TV Plus, Gaming Hub
+        '^com\\.samsung\\.tv\\.(?!aria-video$|tvplus$|gaminghub$)',
+        '^com\\.samsung\\.tizen\\.', '^com\\.samsung\\.calendar-account-manager',
+        '^com\\.samsung\\.(ep[-.]|rdm[-.]|SelfDiagnosis$|mtm-banner$|hitcomp$|video-test$)', '^com\\.sausng\\.',
+        '^adplatform\\.', '^ise-', '^ug-', '^d75857a5-',
+        '^(unified-drm-|lib-|p2p-asm|mobilebff$|comss$|acm-watcher$|dmr_service_app$|aifw-|csapi-|capi-|ep-|test-|emergency-log-transmitter$|samsung-easy-support$)',
+        '[Ss]ervice$', '[Dd]aemon', 'Preview$', 'syspopup', '[Hh]elper$', 'AdPlayer', 'AdSuite', '[Kk]eyboard', '\\.OTApp$',
+        '\\.(widget|ime)$'
+    ].join('|'));
+
+    // nomes que a TV entrega "por dentro" e que trocamos pelo nome conhecido
+    var TITLES = { 'com.samsung.tv.aria-video': 'Apple TV', 'com.samsung.tv.store': 'Apps', 'com.samsung.tv.tvplus': 'Samsung TV Plus',
+        'com.samsung.tv.gaminghub': 'Gaming Hub', 'com.samsung.tv.SmartThingsApp': 'SmartThings', 'org.tizen.browser': 'Internet' };
 
     var PALETTE = ['#3a3a3c', '#2c4a6b', '#5a3a6b', '#6b3a3a', '#3a6b4a', '#6b5a2c', '#2c5a6b', '#4a3a6b'];
 
@@ -35,7 +50,7 @@
         ['Spotify', ['rJeHak5zRg.Spotify', '3201606009684']],
         ['Deezer', ['cexr1qp97S.Deezer']],
         ['YouTube Kids', ['5SLwh7m3En.TizenYouTubeKids']],
-        ['Apple TV', ['3201807016597']],
+        ['Apple TV', ['com.samsung.tv.aria-video', '3201807016597']],
         ['Plex', ['kIciSQlYEM.plex', '3201512006963']]
     ];
 
@@ -264,9 +279,9 @@
             if (!a || !a.id || seen[a.id] || a.id === me) return;
             if ((!loose && a.show === false) || HIDDEN.test(a.id) || !a.name) return;
             // app sem ícone é quase sempre peça interna do sistema (os quadrados só com letra)
-            if (!loose && !a.iconPath && !known[a.id]) return;
+            if (!loose && !a.iconPath && !known[a.id] && !TITLES[a.id]) return;
             seen[a.id] = true;
-            out.push(entry(a.id, a.name, a.iconPath));
+            out.push(entry(a.id, TITLES[a.id] || a.name, a.iconPath));
         });
         // Netflix vem duas vezes em algumas TVs (a de fábrica e a da loja): fica só a da loja
         var storeNetflix = out.some(function (x) { return /\.Netflix$/.test(x.id); });
